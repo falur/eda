@@ -10,7 +10,7 @@
 ## ⚡ Установка
 
 ```bash
-npm install -g @falur/eda
+npm install -g @gian-tiaga/eda
 ```
 
 В корне твоего проекта:
@@ -94,7 +94,7 @@ eda --help    # справка
 Когда выходит новая версия пакета:
 
 ```bash
-npm update -g @falur/eda    # подтянуть новый код
+npm update -g @gian-tiaga/eda    # подтянуть новый код
 eda update           # синхронизировать скилы в текущем проекте
 ```
 
