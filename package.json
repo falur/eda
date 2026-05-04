@@ -1,6 +1,6 @@
 {
   "name": "@gian-tiaga/eda",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Набор скилов eda-* для Claude Code и Codex CLI: research, plan, execute, review, fix, send-review, commit, docs, automate",
   "type": "module",
   "bin": {
@@ -16,7 +16,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test \"test/**/*.test.js\""
   },
   "keywords": [
     "claude",
