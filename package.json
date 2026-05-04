@@ -4,7 +4,7 @@
   "description": "Набор скилов eda-* для Claude Code и Codex CLI: research, plan, execute, review, fix, send-review, commit, docs, automate",
   "type": "module",
   "bin": {
-    "eda": "./bin/cli.js"
+    "eda": "bin/cli.js"
   },
   "files": [
     "bin",
