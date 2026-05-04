@@ -26,5 +26,14 @@
     "skills",
     "agents"
   ],
-  "license": "MIT"
+  "author": "Енакаев Ильдар",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/falur/eda.git"
+  },
+  "homepage": "https://github.com/falur/eda#readme",
+  "bugs": {
+    "url": "https://github.com/falur/eda/issues"
+  }
 }
