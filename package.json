@@ -1,6 +1,6 @@
 {
   "name": "@falur/eda",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Набор скилов eda-* для Claude Code и Codex CLI: research, plan, execute, review, fix, send-review, commit, docs, automate",
   "type": "module",
   "bin": {
