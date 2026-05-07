@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
-import { update } from '../lib/install.js';
+import { askTargets, update } from '../lib/install.js';
 
 test('update installs Codex skills as skill directories with SKILL.md', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-install-'));
@@ -19,4 +20,13 @@ test('update installs Codex skills as skill directories with SKILL.md', async ()
     fs.stat(path.join(cwd, '.codex/skills/eda-plan.md')),
     err => err?.code === 'ENOENT'
   );
+});
+
+test('askTargets defaults to both targets without an interactive terminal', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+
+  const targets = await askTargets({ input, output });
+
+  assert.deepEqual(targets, ['claude', 'codex']);
 });

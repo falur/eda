@@ -1,7 +1,7 @@
 {
   "name": "@gian-tiaga/eda",
-  "version": "0.2.7",
-  "description": "Набор скилов eda-* для Claude Code и Codex CLI: research, plan, execute, review, fix, send-review, commit, docs, automate",
+  "version": "0.2.8",
+  "description": "Набор скилов eda-* для Claude Code и Codex CLI: research, plan, execute, fix, review, fix-by-review, send-review, commit, docs, automate",
   "type": "module",
   "bin": {
     "eda": "bin/cli.js"
@@ -35,5 +35,8 @@
   "homepage": "https://github.com/falur/eda#readme",
   "bugs": {
     "url": "https://github.com/falur/eda/issues"
+  },
+  "dependencies": {
+    "@inquirer/checkbox": "^4.3.2"
   }
 }
