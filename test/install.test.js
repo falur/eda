@@ -11,7 +11,7 @@ import { askTargets, update } from '../lib/install.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
-const SKILLS_SRC = path.join(ROOT, 'docs/skills');
+const SKILLS_SRC = path.join(ROOT, 'skills');
 
 async function listSkillFiles() {
   const entries = await fs.readdir(SKILLS_SRC);
@@ -112,7 +112,7 @@ test('update installs Claude and Codex copies identical to packaged skills', asy
     const claude = await fs.readFile(path.join(cwd, '.claude/skills', skillName, 'SKILL.md'), 'utf8');
     const codex = await fs.readFile(path.join(cwd, '.codex/skills', skillName, 'SKILL.md'), 'utf8');
 
-    assert.equal(claude, source, `${skillName} Claude copy must match docs/skills`);
-    assert.equal(codex, source, `${skillName} Codex copy must match docs/skills`);
+    assert.equal(claude, source, `${skillName} Claude copy must match skills`);
+    assert.equal(codex, source, `${skillName} Codex copy must match skills`);
   }
 });
