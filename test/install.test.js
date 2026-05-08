@@ -89,6 +89,16 @@ test('eda-fix-by-review supports inline review text without a review file', asyn
   assert.match(content, /Короткое сообщение: путь к ревью или «источник: текст из сообщения»/);
 });
 
+test('eda-execute forbids suppressing failing checks', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-execute.md'), 'utf8');
+
+  assert.match(content, /Проверки нельзя подавлять/);
+  assert.match(content, /Пиши и правь код так, чтобы проверки проходили по сути/);
+  assert.match(content, /не добавляй игноры, исключения из проверок/);
+  assert.match(content, /Запрещено делать проверки зелёными через подавление ошибок/);
+  assert.match(content, /Подавлять ошибки линтеров, тестов, typecheck или других проверок вместо исправления кода/);
+});
+
 test('update installs Claude and Codex copies identical to packaged skills', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-install-both-'));
   await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
