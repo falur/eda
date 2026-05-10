@@ -68,6 +68,8 @@ defaults:
   strict: false
   # normal | short | ask_each_time
   plan_size: normal
+  # autonomous | recommend_and_ask | ask_each_time
+  decision_mode: recommend_and_ask
   # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
   # debug_precise | standard | ask_each_time
@@ -85,6 +87,7 @@ review:
 Что означают настройки:
 - `defaults.strict` — включает strict-режим по умолчанию для `eda-explore`, `eda-plan` и `eda-review`.
 - `defaults.plan_size` — размер плана для `eda-plan`: `normal`, `short` или `ask_each_time`.
+- `defaults.decision_mode` — как `eda-explore` и `eda-plan` принимают существенные решения: `autonomous` выбирает сам, `recommend_and_ask` рекомендует и спрашивает, `ask_each_time` спрашивает по каждой значимой развилке.
 - `defaults.test_strategy` — стратегия тестов для `eda-plan`: `after_each_phase`, `tdd_each_phase`, `end_of_plan` или `ask_each_time`.
 - `defaults.logging_strategy` — стратегия логирования для `eda-plan`: `debug_precise`, `standard` или `ask_each_time`.
 - `automate.include_plans` — добавляет `docs/plans/` в обычный запуск `eda-automate`.

@@ -90,6 +90,7 @@ test('askSettings returns default project settings without an interactive termin
   assert.deepEqual(settings, {
     strict: false,
     planSize: 'normal',
+    decisionMode: 'recommend_and_ask',
     testStrategy: 'ask_each_time',
     loggingStrategy: 'ask_each_time',
     includePlans: false,
@@ -111,6 +112,8 @@ defaults:
   strict: false
   # normal | short | ask_each_time
   plan_size: normal
+  # autonomous | recommend_and_ask | ask_each_time
+  decision_mode: recommend_and_ask
   # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
   # debug_precise | standard | ask_each_time
@@ -142,6 +145,8 @@ test('update preserves existing docs/settings.yaml', async () => {
   assert.equal(settings, 'version: 1\ncustom: true\n');
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Существующий файл не перезаписываю\. Актуальный формат:/);
+  assert.match(stdout, /# autonomous \| recommend_and_ask \| ask_each_time/);
+  assert.match(stdout, /decision_mode: recommend_and_ask/);
   assert.match(stdout, /# after_each_phase \| tdd_each_phase \| end_of_plan \| ask_each_time/);
   assert.match(stdout, /test_strategy: ask_each_time/);
   assert.match(stdout, /# debug_precise \| standard \| ask_each_time/);
@@ -171,6 +176,12 @@ test('config-aware skills read docs/settings.yaml', async () => {
   const plan = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
   assert.match(plan, /defaults\.plan_size: normal/);
   assert.match(plan, /defaults\.plan_size` \| `normal`, `short`, `ask_each_time`/);
+  assert.match(plan, /defaults\.decision_mode: recommend_and_ask/);
+  assert.match(plan, /defaults\.decision_mode` \| `autonomous`, `recommend_and_ask`, `ask_each_time`/);
+
+  const explore = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
+  assert.match(explore, /defaults\.decision_mode: recommend_and_ask/);
+  assert.match(explore, /существенные решения/);
 
   const automate = await fs.readFile(path.join(SKILLS_SRC, 'eda-automate.md'), 'utf8');
   assert.match(automate, /automate\.include_plans: false/);
