@@ -64,19 +64,29 @@ eda init
 version: 1
 
 defaults:
+  # true | false
   strict: false
+  # normal | short | ask_each_time
   plan_size: normal
+  # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
+  test_strategy: ask_each_time
+  # debug_precise | standard | ask_each_time
+  logging_strategy: ask_each_time
 
 automate:
+  # true | false
   include_plans: false
 
 review:
+  # true | false
   include_code_quality: true
 ```
 
 Что означают настройки:
 - `defaults.strict` — включает strict-режим по умолчанию для `eda-explore`, `eda-plan` и `eda-review`.
 - `defaults.plan_size` — размер плана для `eda-plan`: `normal`, `short` или `ask_each_time`.
+- `defaults.test_strategy` — стратегия тестов для `eda-plan`: `after_each_phase`, `tdd_each_phase`, `end_of_plan` или `ask_each_time`.
+- `defaults.logging_strategy` — стратегия логирования для `eda-plan`: `debug_precise`, `standard` или `ask_each_time`.
 - `automate.include_plans` — добавляет `docs/plans/` в обычный запуск `eda-automate`.
 - `review.include_code_quality` — добавляет в `eda-review` проверку качества кода и отдельного мета-ревьюера `quality-check`.
 

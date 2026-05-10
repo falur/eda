@@ -90,6 +90,8 @@ test('askSettings returns default project settings without an interactive termin
   assert.deepEqual(settings, {
     strict: false,
     planSize: 'normal',
+    testStrategy: 'ask_each_time',
+    loggingStrategy: 'ask_each_time',
     includePlans: false,
     includeCodeQuality: true
   });
@@ -105,13 +107,21 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.equal(settings, `version: 1
 
 defaults:
+  # true | false
   strict: false
+  # normal | short | ask_each_time
   plan_size: normal
+  # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
+  test_strategy: ask_each_time
+  # debug_precise | standard | ask_each_time
+  logging_strategy: ask_each_time
 
 automate:
+  # true | false
   include_plans: false
 
 review:
+  # true | false
   include_code_quality: true
 `);
 });
@@ -119,14 +129,23 @@ review:
 test('update preserves existing docs/settings.yaml', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-existing-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
   await fs.writeFile(settingsPath, 'version: 1\ncustom: true\n');
 
-  await update({ cwd });
+  await update({ cwd, output });
 
   const settings = await fs.readFile(settingsPath, 'utf8');
   assert.equal(settings, 'version: 1\ncustom: true\n');
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Существующий файл не перезаписываю\. Актуальный формат:/);
+  assert.match(stdout, /# after_each_phase \| tdd_each_phase \| end_of_plan \| ask_each_time/);
+  assert.match(stdout, /test_strategy: ask_each_time/);
+  assert.match(stdout, /# debug_precise \| standard \| ask_each_time/);
+  assert.match(stdout, /logging_strategy: ask_each_time/);
 });
 
 test('all packaged eda skills describe inline user-message input', async () => {
