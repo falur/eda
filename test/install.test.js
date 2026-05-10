@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { askSettings, askTargets, update } from '../lib/install.js';
 
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
@@ -19,6 +22,14 @@ async function listSkillFiles() {
     .filter(name => /^eda-.*\.md$/.test(name))
     .sort();
 }
+
+test('cli prints package version with --version', async () => {
+  const packageJson = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
+
+  const { stdout } = await execFileAsync(process.execPath, [path.join(ROOT, 'bin/cli.js'), '--version']);
+
+  assert.equal(stdout, `${packageJson.version}\n`);
+});
 
 test('update installs Codex skills as skill directories with SKILL.md', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-install-'));

@@ -117,6 +117,7 @@ automate может запускаться от review, fix-by-review или fix
 ```bash
 eda init      # выбрать Claude Code / Codex / обе среды и установить скилы
 eda update    # обновить скилы и создать docs/settings.yaml, если его ещё нет
+eda --version # показать версию установленного пакета
 eda --help    # справка
 ```
 
