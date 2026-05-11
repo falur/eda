@@ -192,6 +192,15 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(review, /quality-check/);
 });
 
+test('eda-review reports only problems, not completed work', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+
+  assert.match(content, /Ревью содержит только проблемы/);
+  assert.match(content, /Не перечисля/);
+  assert.match(content, /Проблемы сверки с планом/);
+  assert.doesNotMatch(content, /Статус: <выполнено/);
+});
+
 test('eda-plan no longer requires a research selection question by default', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
 
