@@ -218,6 +218,17 @@ test('eda-plan final format keeps risks and execution order inside phases', asyn
   assert.match(content, /линейный порядок задаётся номерами фаз/);
 });
 
+test('eda-roadmap creates non-implementation task roadmaps', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-roadmap.md'), 'utf8');
+
+  assert.match(content, /docs\/roadmaps/);
+  assert.match(content, /## Задачи/);
+  assert.match(content, /Аутентификация через email, ВК и Яндекс/);
+  assert.match(content, /Roadmap — не план реализации/);
+  assert.match(content, /не содержат деталей реализации/);
+  assert.match(content, /файлов, библиотек, API/);
+});
+
 test('eda-explore asks only blocking questions and requires concrete output', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
 

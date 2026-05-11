@@ -43,6 +43,7 @@ eda/
 │   ├── eda-fix.md
 │   ├── eda-fix-by-review.md
 │   ├── eda-plan.md
+│   ├── eda-roadmap.md
 │   ├── eda-review.md
 │   └── eda-send-review.md
 └── test/
@@ -108,6 +109,7 @@ description: '...'
 - Если скил зависит от настроек, явно документируй чтение `docs/settings.yaml` и значения по умолчанию.
 - Интерактивные вопросы формулируй через общий паттерн `AskUserQuestion`: Claude Code, Codex interactive и неинтерактивный Codex должны быть описаны отдельно.
 - Сохраняй жёсткие границы ответственности:
+  - `eda-roadmap` создаёт список будущих задач, но не пишет детали реализации.
   - `eda-explore` исследует, но не пишет план реализации.
   - `eda-plan` планирует, но не меняет код.
   - `eda-execute`, `eda-fix`, `eda-fix-by-review` меняют код и проверяют результат.
