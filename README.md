@@ -19,7 +19,7 @@ npm install -g @gian-tiaga/eda
 eda init
 ```
 
-Установщик покажет чекбоксы: стрелками выбираешь среду, пробелом отмечаешь, Enter продолжает. Можно поставить Claude Code, Codex CLI или обе среды сразу. Если `docs/settings.yaml` ещё нет, установщик также предложит выбрать настройки скилов и создаст этот файл.
+Установщик покажет чекбоксы: стрелками выбираешь среду, пробелом отмечаешь, Enter продолжает. Можно поставить Claude Code, Codex CLI или обе среды сразу. Если `docs/settings.yaml` ещё нет, установщик также предложит выбрать настройки скилов и создаст этот файл. В конце `eda init` пишет, сколько скилов установлено.
 
 ---
 
@@ -65,22 +65,29 @@ eda init
 version: 1
 
 defaults:
+  # Включает strict-режим по умолчанию для eda-explore, eda-plan и eda-review.
   # true | false
   strict: false
+  # Задаёт размер плана по умолчанию для eda-plan.
   # normal | short | ask_each_time
   plan_size: normal
+  # Определяет, как eda-explore и eda-plan принимают существенные решения.
   # autonomous | recommend_and_ask | ask_each_time
   decision_mode: recommend_and_ask
+  # Задаёт стратегию тестов по умолчанию для eda-plan.
   # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
+  # Задаёт стратегию логирования по умолчанию для eda-plan.
   # debug_precise | standard | ask_each_time
   logging_strategy: ask_each_time
 
 automate:
+  # Добавляет docs/plans/ в обычный запуск eda-automate.
   # true | false
   include_plans: false
 
 review:
+  # Добавляет в eda-review проверку качества кода и meta-reviewer quality-check.
   # true | false
   include_code_quality: true
 ```
@@ -130,7 +137,7 @@ automate может запускаться от review, fix-by-review или fix
 
 ```bash
 eda init      # выбрать Claude Code / Codex / обе среды и установить скилы
-eda update    # обновить скилы и создать docs/settings.yaml, если его ещё нет
+eda update    # обновить скилы, показать их количество и создать docs/settings.yaml, если его ещё нет
 eda --version # показать версию установленного пакета
 eda --help    # справка
 ```
@@ -153,7 +160,7 @@ eda update           # синхронизировать скилы в текущ
 | **Claude Code** | `<project>/.claude/skills/<skill>/SKILL.md` — отдельная папка на каждый скил |
 | **Codex CLI** | `<project>/.codex/skills/<skill>/SKILL.md` — отдельная папка на каждый скил |
 
-`eda update` идемпотентно перезаписывает файлы в обеих папках. При обновлении старые файлы Codex-формата `<project>/.codex/skills/<skill>.md`, созданные версиями `eda` до этой структуры, удаляются. Если ты хочешь подправить скил локально — лучше копию сделай рядом, а не прямо в `.claude/skills/` или `.codex/skills/`, иначе при следующем `update` твои правки потеряются.
+`eda update` идемпотентно перезаписывает файлы в обеих папках и в конце пишет, сколько скилов обновлено. При обновлении старые файлы Codex-формата `<project>/.codex/skills/<skill>.md`, созданные версиями `eda` до этой структуры, удаляются. Если ты хочешь подправить скил локально — лучше копию сделай рядом, а не прямо в `.claude/skills/` или `.codex/skills/`, иначе при следующем `update` твои правки потеряются.
 
 `AGENTS.md` (как и любые другие файлы в корне проекта) установщик **не трогает**. Если хочешь, чтобы Codex автоматически подгружал скилы, дай ему знать сам — например, одной строкой в `AGENTS.md`: «следуй инструкциям из `.codex/skills/`».
 

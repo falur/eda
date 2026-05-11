@@ -8,7 +8,7 @@ import test from 'node:test';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { askSettings, askTargets, update } from '../lib/install.js';
+import { askSettings, askTargets, init, update } from '../lib/install.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +44,36 @@ test('update installs Codex skills as skill directories with SKILL.md', async ()
     fs.stat(path.join(cwd, '.codex/skills/eda-plan.md')),
     err => err?.code === 'ENOENT'
   );
+});
+
+test('init prints installed skills count', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-init-count-'));
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  const skillCount = (await listSkillFiles()).length;
+
+  await init({ cwd, output });
+
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, new RegExp(`Установлено ${skillCount} скил(?:а|ов)?\\.`));
+  assert.match(stdout, new RegExp(`Claude Code: .*\\(${skillCount} скил(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(${skillCount} скил(?:а|ов)?\\)`));
+});
+
+test('update prints updated skills count', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-count-'));
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  const skillCount = (await listSkillFiles()).length;
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+
+  await update({ cwd, output });
+
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, new RegExp(`Обновлено ${skillCount} скил(?:а|ов)?\\.`));
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(${skillCount} скил(?:а|ов)?\\)`));
 });
 
 test('update removes retired eda-research skills from installed targets', async () => {
@@ -108,22 +138,29 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.equal(settings, `version: 1
 
 defaults:
+  # Включает strict-режим по умолчанию для eda-explore, eda-plan и eda-review.
   # true | false
   strict: false
+  # Задаёт размер плана по умолчанию для eda-plan.
   # normal | short | ask_each_time
   plan_size: normal
+  # Определяет, как eda-explore и eda-plan принимают существенные решения.
   # autonomous | recommend_and_ask | ask_each_time
   decision_mode: recommend_and_ask
+  # Задаёт стратегию тестов по умолчанию для eda-plan.
   # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
+  # Задаёт стратегию логирования по умолчанию для eda-plan.
   # debug_precise | standard | ask_each_time
   logging_strategy: ask_each_time
 
 automate:
+  # Добавляет docs/plans/ в обычный запуск eda-automate.
   # true | false
   include_plans: false
 
 review:
+  # Добавляет в eda-review проверку качества кода и meta-reviewer quality-check.
   # true | false
   include_code_quality: true
 `);
