@@ -200,15 +200,27 @@ test('eda-plan no longer requires a research selection question by default', asy
   assert.match(content, /не спрашивай research автоматически/);
 });
 
+test('eda-plan final format keeps risks and execution order inside phases', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+
+  assert.doesNotMatch(content, /^## Риски$/m);
+  assert.doesNotMatch(content, /^## Порядок выполнения$/m);
+  assert.match(content, /Риски не выносятся в отдельный обязательный раздел/);
+  assert.match(content, /линейный порядок задаётся номерами фаз/);
+});
+
 test('eda-explore asks only blocking questions and requires concrete output', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
 
   assert.doesNotMatch(content, /Не уходи дальше, пока цель не подтверждена/);
+  assert.doesNotMatch(content, /^### \d+\. Закрыть риски$/m);
   assert.match(content, /Если входа достаточно, продолжай без подтверждения/);
   assert.match(content, /## Суть/);
   assert.match(content, /## Решение/);
   assert.match(content, /## Ответы на вопросы/);
   assert.match(content, /## Итог/);
+  assert.match(content, /Риски вплетай в исследование/);
+  assert.match(content, /Не выноси риски в отдельную секцию ради формы/);
   assert.match(content, /чтобы `eda-plan` не задавал их повторно/);
   assert.match(content, /ASCII-диаграммы/);
   assert.match(content, /context7/);
