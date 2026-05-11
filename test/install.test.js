@@ -20,7 +20,7 @@ async function listSkillFiles() {
   const entries = await fs.readdir(SKILLS_SRC);
   return entries
     .filter(name => /^eda-.*\.md$/.test(name))
-    .sort();
+    .sort((a, b) => a.replace(/\.md$/, '').localeCompare(b.replace(/\.md$/, '')));
 }
 
 test('cli prints package version with --version', async () => {
@@ -51,14 +51,15 @@ test('init prints installed skills count', async () => {
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
-  const skillCount = (await listSkillFiles()).length;
+  const skillNames = (await listSkillFiles()).map(file => file.replace(/\.md$/, ''));
+  const skillCount = skillNames.length;
 
   await init({ cwd, output });
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, new RegExp(`Установлено ${skillCount} скил(?:а|ов)?\\.`));
-  assert.match(stdout, new RegExp(`Claude Code: .*\\(${skillCount} скил(?:а|ов)?\\)`));
-  assert.match(stdout, new RegExp(`Codex CLI: .*\\(${skillCount} скил(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Установлено ${skillCount} скил(?:а|ов)?: ${skillNames.join(', ')}\\.`));
+  assert.match(stdout, new RegExp(`Claude Code: .*\\(изменилось ${skillCount} скил(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(изменилось ${skillCount} скил(?:а|ов)?\\)`));
 });
 
 test('update prints updated skills count', async () => {
@@ -66,14 +67,62 @@ test('update prints updated skills count', async () => {
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
-  const skillCount = (await listSkillFiles()).length;
+  const skillNames = (await listSkillFiles()).map(file => file.replace(/\.md$/, ''));
+  const skillCount = skillNames.length;
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
 
   await update({ cwd, output });
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, new RegExp(`Обновлено ${skillCount} скил(?:а|ов)?\\.`));
-  assert.match(stdout, new RegExp(`Codex CLI: .*\\(${skillCount} скил(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Обновлено ${skillCount} скил(?:а|ов)?: ${skillNames.join(', ')}\\.`));
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(изменилось ${skillCount} скил(?:а|ов)?\\)`));
+});
+
+test('update lists only skills whose installed content changed', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-changed-only-'));
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  const dst = path.join(cwd, '.codex/skills');
+  await fs.mkdir(dst, { recursive: true });
+
+  for (const file of await listSkillFiles()) {
+    const skillName = file.replace(/\.md$/, '');
+    await fs.mkdir(path.join(dst, skillName), { recursive: true });
+    const source = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+    await fs.writeFile(path.join(dst, skillName, 'SKILL.md'), source);
+  }
+  await fs.writeFile(path.join(dst, 'eda-plan/SKILL.md'), 'old plan');
+  await fs.writeFile(path.join(dst, 'eda-review/SKILL.md'), 'old review');
+
+  await update({ cwd, output });
+
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Обновлено 2 скила: eda-plan, eda-review\./);
+  assert.match(stdout, /Codex CLI: .*\(изменилось 2 скила\)/);
+  assert.doesNotMatch(stdout, /Обновлено .*eda-commit/);
+});
+
+test('update prints zero changed skills when installed content is current', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-unchanged-'));
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  const dst = path.join(cwd, '.codex/skills');
+  await fs.mkdir(dst, { recursive: true });
+
+  for (const file of await listSkillFiles()) {
+    const skillName = file.replace(/\.md$/, '');
+    await fs.mkdir(path.join(dst, skillName), { recursive: true });
+    const source = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+    await fs.writeFile(path.join(dst, skillName, 'SKILL.md'), source);
+  }
+
+  await update({ cwd, output });
+
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Обновлено 0 скилов\./);
+  assert.match(stdout, /Codex CLI: .*\(изменилось 0 скилов\)/);
 });
 
 test('update removes retired eda-research skills from installed targets', async () => {
