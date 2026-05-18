@@ -1,6 +1,6 @@
 {
   "name": "@gian-tiaga/eda",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Набор скилов eda-* для Claude Code и Codex CLI: roadmap, explore, plan, execute, fix, review, fix-by-review, send-review, commit, docs, automate",
   "type": "module",
   "bin": {

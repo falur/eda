@@ -193,7 +193,7 @@ defaults:
   # Задаёт размер плана по умолчанию для eda-plan.
   # normal | short | ask_each_time
   plan_size: normal
-  # Определяет, как eda-explore и eda-plan принимают существенные решения.
+  # Определяет, как eda-explore ведёт исследовательские развилки, а eda-plan принимает существенные решения.
   # autonomous | recommend_and_ask | ask_each_time
   decision_mode: recommend_and_ask
   # Задаёт стратегию тестов по умолчанию для eda-plan.
@@ -267,7 +267,7 @@ test('config-aware skills read docs/settings.yaml', async () => {
 
   const explore = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
   assert.match(explore, /defaults\.decision_mode: recommend_and_ask/);
-  assert.match(explore, /существенные решения/);
+  assert.match(explore, /значимые развилки/);
 
   const automate = await fs.readFile(path.join(SKILLS_SRC, 'eda-automate.md'), 'utf8');
   assert.match(automate, /automate\.include_plans: false/);
@@ -304,6 +304,20 @@ test('eda-plan final format keeps risks and execution order inside phases', asyn
   assert.match(content, /линейный порядок задаётся номерами фаз/);
 });
 
+test('eda-plan requires implementation contracts for data and api changes', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+
+  assert.match(content, /## Контракты реализации/);
+  assert.match(content, /### Данные и БД/);
+  assert.match(content, /### API и внешние контракты/);
+  assert.match(content, /таблицы, поля, типы, обязательность, default, связи, индексы/);
+  assert.match(content, /метод и путь, auth\/permissions, request\/query\/body, response/);
+  assert.match(content, /если конкретные схемы БД или API-контракты не подтверждены явно/);
+  assert.match(content, /получи подтверждение пользователя/);
+  assert.match(content, /не проектируй таблицы и маршруты молча внутри Plan Mode/);
+  assert.match(content, /нельзя ограничиваться общими формулировками/);
+});
+
 test('eda-roadmap creates non-implementation task roadmaps', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-roadmap.md'), 'utf8');
 
@@ -315,18 +329,22 @@ test('eda-roadmap creates non-implementation task roadmaps', async () => {
   assert.match(content, /файлов, библиотек, API/);
 });
 
-test('eda-explore asks only blocking questions and requires concrete output', async () => {
+test('eda-explore asks about meaningful forks and requires concrete output', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
 
   assert.doesNotMatch(content, /Не уходи дальше, пока цель не подтверждена/);
   assert.doesNotMatch(content, /^### \d+\. Закрыть риски$/m);
-  assert.match(content, /Если входа достаточно, продолжай без подтверждения/);
+  assert.match(content, /Если входа достаточно, не спрашивай подтверждение самой темы/);
+  assert.match(content, /Это не отменяет обязательные вопросы по исследовательским развилкам ниже/);
+  assert.match(content, /спрашивает пользователя по каждой значимой развилке исследования/);
+  assert.match(content, /сгруппируй близкие развилки в пакет из 1–3 вопросов/);
   assert.match(content, /## Суть/);
   assert.match(content, /## Решение/);
   assert.match(content, /## Ответы на вопросы/);
   assert.match(content, /## Итог/);
   assert.match(content, /Риски вплетай в исследование/);
   assert.match(content, /Не выноси риски в отдельную секцию ради формы/);
+  assert.match(content, /пользовательские выборы по развилкам/);
   assert.match(content, /чтобы `eda-plan` не задавал их повторно/);
   assert.match(content, /ASCII-диаграммы/);
   assert.match(content, /context7/);
