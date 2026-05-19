@@ -16,6 +16,12 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_SRC = path.join(ROOT, 'skills');
 
+function silentOutput() {
+  const output = new PassThrough();
+  output.resume();
+  return output;
+}
+
 async function listSkillFiles() {
   const entries = await fs.readdir(SKILLS_SRC);
   return entries
@@ -36,7 +42,7 @@ test('update installs Codex skills as skill directories with SKILL.md', async ()
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(cwd, '.codex/skills/eda-plan.md'), 'old layout');
 
-  await update({ cwd });
+  await update({ cwd, output: silentOutput() });
 
   const skill = await fs.readFile(path.join(cwd, '.codex/skills/eda-plan/SKILL.md'), 'utf8');
   assert.match(skill, /name: eda-plan/);
@@ -133,7 +139,7 @@ test('update removes retired eda-research skills from installed targets', async 
   await fs.writeFile(path.join(cwd, '.codex/skills/eda-research/SKILL.md'), 'old research skill');
   await fs.writeFile(path.join(cwd, '.codex/skills/eda-research.md'), 'old research file layout');
 
-  await update({ cwd });
+  await update({ cwd, output: silentOutput() });
 
   await assert.rejects(
     fs.stat(path.join(cwd, '.claude/skills/eda-research')),
@@ -181,7 +187,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-'));
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
 
-  await update({ cwd });
+  await update({ cwd, output: silentOutput() });
 
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.equal(settings, `version: 1
@@ -304,6 +310,19 @@ test('eda-plan final format keeps risks and execution order inside phases', asyn
   assert.match(content, /линейный порядок задаётся номерами фаз/);
 });
 
+test('eda-plan and eda-review prefer Codex subagents for normal meta reviews', async () => {
+  const plan = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const review = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+
+  assert.match(plan, /Codex interactive \(`spawn_agent`\)/);
+  assert.match(plan, /Не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
+  assert.match(plan, /Codex exec \/ non-interactive fallback/);
+
+  assert.match(review, /Codex interactive: если доступен инструмент субагентов \(`spawn_agent` или аналог\)/);
+  assert.match(review, /не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
+  assert.match(review, /Codex exec \/ неинтерактивный fallback/);
+});
+
 test('eda-plan requires implementation contracts for data and api changes', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
 
@@ -384,7 +403,7 @@ test('update installs Claude and Codex copies identical to packaged skills', asy
   await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
 
-  await update({ cwd });
+  await update({ cwd, output: silentOutput() });
 
   for (const file of await listSkillFiles()) {
     const skillName = file.replace(/\.md$/, '');
