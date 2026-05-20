@@ -379,6 +379,31 @@ test('eda-send-review keeps safe comment modes inline but confirms state-changin
   assert.match(content, /`approve` и `request-changes` всегда подтверждай через `AskUserQuestion`/);
 });
 
+test('worktree skills document naming and merge contract', async () => {
+  const create = await fs.readFile(path.join(SKILLS_SRC, 'eda-worktree.md'), 'utf8');
+  const merge = await fs.readFile(path.join(SKILLS_SRC, 'eda-merge-worktree.md'), 'utf8');
+
+  assert.match(create, /name: eda-worktree/);
+  assert.match(create, /\{name\}-work-\{n\}/);
+  assert.match(create, /git worktree add -b/);
+  assert.match(create, /Базовую ветку берёт из текста рядом с вызовом/);
+
+  assert.match(merge, /name: eda-merge-worktree/);
+  assert.match(merge, /`work-1`/);
+  assert.match(merge, /`1`/);
+  assert.match(merge, /git merge "\$SOURCE_BRANCH"/);
+  assert.match(merge, /не удаляет worktree и ветку/);
+});
+
+test('readme lists worktree skills', async () => {
+  const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
+
+  assert.match(content, /тринадцать скилов/);
+  assert.match(content, /`eda-worktree`/);
+  assert.match(content, /`eda-merge-worktree`/);
+  assert.match(content, /\{name\}-work-\{n\}/);
+});
+
 test('eda-fix-by-review supports inline review text without a review file', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-fix-by-review.md'), 'utf8');
 

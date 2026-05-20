@@ -42,10 +42,12 @@ eda/
 │   ├── eda-explore.md
 │   ├── eda-fix.md
 │   ├── eda-fix-by-review.md
+│   ├── eda-merge-worktree.md
 │   ├── eda-plan.md
 │   ├── eda-roadmap.md
 │   ├── eda-review.md
-│   └── eda-send-review.md
+│   ├── eda-send-review.md
+│   └── eda-worktree.md
 └── test/
     └── install.test.js    # CLI/install behavior and skill content checks
 ```
@@ -117,6 +119,8 @@ description: '...'
   - `eda-review` пишет ревью, но не правит код.
   - `eda-send-review` отправляет готовое ревью, но не делает новое.
   - `eda-commit` коммитит готовые изменения, но не дописывает логику.
+  - `eda-worktree` создаёт отдельный git worktree и ветку, но не правит код.
+  - `eda-merge-worktree` мержит ветку из worktree в текущую, но не удаляет worktree и ветку.
   - `eda-automate` предлагает автоматизации, но не внедряет их.
 
 ## Проверки перед финалом
