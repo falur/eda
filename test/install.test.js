@@ -293,6 +293,16 @@ test('eda-review reports only problems, not completed work', async () => {
   assert.doesNotMatch(content, /Статус: <выполнено/);
 });
 
+test('eda-review keeps technical details below a readable problem summary', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+
+  assert.match(content, /Основная часть замечания — главный ответ/);
+  assert.match(content, /первый экран пункта можно было прочитать без глубокого знания кода/);
+  assert.match(content, /Технические детали/);
+  assert.match(content, /Не начинай с имён классов, методов, строк, SQL, DTO, конфигов/);
+  assert.match(content, /Что подтверждает проблему/);
+});
+
 test('eda-plan no longer requires a research selection question by default', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
 
