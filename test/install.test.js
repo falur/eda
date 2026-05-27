@@ -347,6 +347,16 @@ test('eda-plan requires implementation contracts for data and api changes', asyn
   assert.match(content, /нельзя ограничиваться общими формулировками/);
 });
 
+test('eda-plan treats project rules and architecture as mandatory planning frame', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+
+  assert.match(content, /обязательная рамка планирования, а не справочный контекст/);
+  assert.match(content, /передай их в Plan Mode как обязательные требования/);
+  assert.match(content, /не финализируй план/);
+  assert.match(content, /план строго следует `docs\/rules\.md` и `docs\/arch\.md`/);
+  assert.match(content, /Считать `docs\/rules\.md` и `docs\/arch\.md` просто контекстом/);
+});
+
 test('eda-roadmap creates non-implementation task roadmaps', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-roadmap.md'), 'utf8');
 
@@ -431,6 +441,16 @@ test('eda-execute forbids suppressing failing checks', async () => {
   assert.match(content, /не добавляй игноры, исключения из проверок/);
   assert.match(content, /Запрещено делать проверки зелёными через подавление ошибок/);
   assert.match(content, /Подавлять ошибки линтеров, тестов, typecheck или других проверок вместо исправления кода/);
+});
+
+test('eda-execute treats project rules and architecture as mandatory execution frame', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-execute.md'), 'utf8');
+
+  assert.match(content, /`docs\/rules\.md` и `docs\/arch\.md` обязательны к исполнению/);
+  assert.match(content, /Выполняй план только в той форме, которая строго следует правилам и архитектуре проекта/);
+  assert.match(content, /Перед правкой сверяешь действие с `docs\/rules\.md` и `docs\/arch\.md`/);
+  assert.match(content, /Исполнять план, который противоречит правилам или архитектуре проекта/);
+  assert.match(content, /Обходить правило или архитектурное ограничение без явного решения пользователя/);
 });
 
 test('update installs Claude and Codex copies identical to packaged skills', async () => {
