@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
-import { init, update } from '../lib/install.js';
+import { init, update, updateAll } from '../lib/install.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -11,6 +11,7 @@ const HELP = `eda — установка и обновление скилов ed
 Использование:
   eda init     — выбрать целевые среды (Claude / Codex / обе) и установить скилы
   eda update   — обновить уже установленные скилы в текущем проекте
+  eda update-all [dir] — обновить уже установленные скилы во всех проектах внутри dir
   eda --version — показать версию
   eda --help   — показать эту справку
 `;
@@ -22,6 +23,9 @@ try {
       break;
     case 'update':
       await update({ cwd: process.cwd() });
+      break;
+    case 'update-all':
+      await updateAll({ root: process.argv[3] ?? process.cwd() });
       break;
     case '-v':
     case '--version':

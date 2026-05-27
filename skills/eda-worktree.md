@@ -7,13 +7,6 @@ description: 'Создаёт новый git worktree рядом с основн�
 
 Создаёшь отдельный git worktree для параллельной работы. Worktree всегда появляется рядом с основным проектом, а имя выбирается автоматически.
 
-## Режимы вызова
-
-| Режим | Запуск | Что делает |
-|---|---|---|
-| С выбранной базой | `eda-worktree main` | Создаёт worktree от указанной ветки, тега или commit-ref |
-| С вопросом | `eda-worktree` | Спрашивает, от какой базы создать worktree |
-
 ## Вход из сообщения пользователя
 
 Текст рядом с вызовом скилла в текущем сообщении пользователя — главный вход. Сначала разбери именно его: базовую ветку или ref, ограничения и прямые указания.
@@ -50,10 +43,7 @@ git worktree list --porcelain
 
 Если это не git-репозиторий — остановись и сообщи. Основной worktree бери из первой записи `worktree <path>` в `git worktree list --porcelain`. Если список не удалось прочитать, используй `git rev-parse --show-toplevel`.
 
-Определи:
-- `$MAIN_WORKTREE` — путь основного worktree;
-- `$PROJECT_NAME` — basename от `$MAIN_WORKTREE`;
-- `$PROJECT_PARENT` — родительская папка `$MAIN_WORKTREE`.
+Определи `$MAIN_WORKTREE` — путь основного worktree, `$PROJECT_NAME` — basename от него, `$PROJECT_PARENT` — родительская папка.
 
 ### 2. Выбрать базу
 
@@ -86,10 +76,7 @@ git rev-parse --verify "$BASE_REF^{commit}"
 git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"
 ```
 
-Результат:
-- `$WORKTREE_NAME=$PROJECT_NAME-work-$n`;
-- `$BRANCH_NAME=$WORKTREE_NAME`;
-- `$WORKTREE_PATH=$PROJECT_PARENT/$WORKTREE_NAME`.
+Результат: `$WORKTREE_NAME=$PROJECT_NAME-work-$n`, `$BRANCH_NAME=$WORKTREE_NAME`, `$WORKTREE_PATH=$PROJECT_PARENT/$WORKTREE_NAME`.
 
 Если папка уже есть, не перезаписывай её и не удаляй. Просто бери следующий номер.
 
