@@ -49,6 +49,7 @@ eda/
 │   ├── eda-review.md
 │   ├── eda-review-check.md
 │   ├── eda-send-review.md
+│   ├── eda-start.md
 │   └── eda-worktree.md
 └── test/
     └── install.test.js    # CLI/install behavior and skill content checks
@@ -119,6 +120,7 @@ description: '...'
 - Обычные мета-проверки `eda-plan` и `eda-review-check` в интерактивном Codex должны идти через субагентов (`spawn_agent` или аналог). Отдельные `codex exec` используй только как fallback для неинтерактивного Codex или как strict-кросс-проверку соседним CLI.
 - Сохраняй жёсткие границы ответственности:
   - `eda-roadmap` создаёт список будущих задач, но не пишет детали реализации.
+  - `eda-start` собирает требования и стартовые решения нового проекта, но не пишет код и не ставит зависимости.
   - `eda-explore` исследует, но не пишет план реализации.
   - `eda-plan` планирует, но не меняет код.
   - `eda-execute`, `eda-fix`, `eda-fix-by-review` меняют код и проверяют результат.

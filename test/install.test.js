@@ -376,6 +376,19 @@ test('eda-review reports only problems, not completed work', async () => {
   assert.doesNotMatch(content, /Статус: <выполнено/);
 });
 
+test('eda-review without arguments reviews uncommitted diff without plan checks', async () => {
+  const review = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+  const reviewCheck = await fs.readFile(path.join(SKILLS_SRC, 'eda-review-check.md'), 'utf8');
+
+  assert.match(review, /без аргументов/);
+  assert.match(review, /незакоммиченный `git diff HEAD` без проверки плана/);
+  assert.match(review, /\$PLAN_FILE=none/);
+  assert.match(review, /plan: <docs\/plans\/\.\.\. \| none>/);
+  assert.match(reviewCheck, /не запускай `plan-check`/);
+  assert.match(reviewCheck, /`plan-check` запускай только если/);
+  assert.match(reviewCheck, /только фактически запущенные роли/);
+});
+
 test('eda-review keeps technical details below a readable problem summary', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
 
@@ -481,6 +494,36 @@ test('eda-roadmap creates non-implementation task roadmaps', async () => {
   assert.match(content, /файлов, библиотек, API/);
 });
 
+test('eda-start captures collaborative project-start decisions', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-start.md'), 'utf8');
+
+  assert.match(content, /name: eda-start/);
+  assert.match(content, /docs\/project-starts/);
+  assert.match(content, /Собрать требования/);
+  assert.match(content, /Выбрать стек/);
+  assert.match(content, /Подобрать инструменты качества/);
+  assert.match(content, /форматирование кода/);
+  assert.match(content, /линтеры/);
+  assert.match(content, /статический анализ и typecheck/);
+  assert.match(content, /Подобрать AI-скилы, агентные инструкции и MCP/);
+  assert.match(content, /AI-скилы, slash-команды, агентные инструкции или специализированные роли/);
+  assert.match(content, /готовые скилы можно взять из доступных наборов/);
+  assert.match(content, /проектные скилы стоит написать специально под этот проект/);
+  assert.match(content, /Не ограничивайся `eda-\*`/);
+  assert.match(content, /MCP-сервер/);
+  assert.match(content, /Выбрать архитектуру/);
+  assert.match(content, /Решить правила проекта/);
+  assert.ok(
+    content.indexOf('### 6. Подобрать AI-скилы, агентные инструкции и MCP') >
+      content.indexOf('### 5. Решить правила проекта'),
+    'AI skills and MCP should be selected after architecture and rules'
+  );
+  assert.match(content, /Подбирай рабочий набор AI-инструментов только после требований, стека, инструментов качества, архитектуры и правил/);
+  assert.match(content, /Интерактивное совместное решение обязательно/);
+  assert.match(content, /AskUserQuestion/);
+  assert.match(content, /не пишешь код и не ставишь пакеты/i);
+});
+
 test('eda-explore asks about meaningful forks and requires concrete output', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
 
@@ -531,7 +574,8 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists worktree skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /пятнадцать скилов/);
+  assert.match(content, /шестнадцать скилов/);
+  assert.match(content, /`eda-start`/);
   assert.match(content, /`eda-worktree`/);
   assert.match(content, /`eda-merge-worktree`/);
   assert.match(content, /`eda-review-check`/);
