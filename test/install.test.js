@@ -438,6 +438,26 @@ test('eda-plan and eda-review prefer Codex subagents for normal meta reviews', a
   assert.match(reviewCheck, /Codex exec \/ неинтерактивный fallback/);
 });
 
+test('eda-plan-polish documents isolated plan polishing agents', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan-polish.md'), 'utf8');
+
+  assert.match(content, /name: eda-plan-polish/);
+  assert.match(content, /готовый план/);
+  assert.match(content, /Порог качества по умолчанию — `95`/);
+  assert.match(content, /Лимит по умолчанию — `5` итераций/);
+  assert.match(content, /0–100/);
+  assert.match(content, /completeness-polisher/);
+  assert.match(content, /rules-arch-polisher/);
+  assert.match(content, /execution-readiness-polisher/);
+  assert.match(content, /параллельно/);
+  assert.match(content, /Принять/);
+  assert.match(content, /Отклонить/);
+  assert.match(content, /Не правишь код/);
+  assert.match(content, /score не растёт/);
+  assert.match(content, /Оценка plan-polish/);
+  assert.match(content, /Изменения после plan-polish/);
+});
+
 test('eda-review supports draft mode and delegates normal checks', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
 
@@ -574,8 +594,11 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists worktree skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /шестнадцать скилов/);
+  assert.match(content, /восемнадцать скилов/);
   assert.match(content, /`eda-start`/);
+  assert.match(content, /`eda-plan-polish`/);
+  assert.match(content, /`eda-manual-test`/);
+  assert.match(content, /docs\/manual-tests/);
   assert.match(content, /`eda-worktree`/);
   assert.match(content, /`eda-merge-worktree`/);
   assert.match(content, /`eda-review-check`/);
@@ -598,6 +621,21 @@ test('eda-fix-by-review supports apply-optional mode for orchestrated polishing'
   assert.match(content, /Режим `apply-optional`/);
   assert.match(content, /применяй сразу без вопроса/);
   assert.match(content, /кроме явного режима `apply-optional`/);
+});
+
+test('eda-manual-test documents manual API and frontend smoke checks', async () => {
+  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-manual-test.md'), 'utf8');
+
+  assert.match(content, /name: eda-manual-test/);
+  assert.match(content, /docs\/manual-tests/);
+  assert.match(content, /curl/);
+  assert.match(content, /Playwright/);
+  assert.match(content, /browser automation/);
+  assert.match(content, /git diff HEAD/);
+  assert.match(content, /AskUserQuestion/);
+  assert.match(content, /Не правь код/);
+  assert.match(content, /не пиши и не обновляй автотесты/);
+  assert.match(content, /не устанавливай зависимости молча/);
 });
 
 test('eda-polish documents the review-check-fix loop and limits', async () => {
