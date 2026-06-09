@@ -448,6 +448,9 @@ test('eda-plan-polish documents three full-plan reviewers and forbids checks', a
   assert.match(content, /0–100/);
   assert.match(content, /один общий промпт/);
   assert.match(content, /каждый проверяет весь план целиком/);
+  assert.match(content, /Прочитай только выбранный план целиком/);
+  assert.match(content, /Сам не читай `docs\/rules\.md`, `docs\/arch\.md`, `sources\.research` и релевантный код на этом шаге/);
+  assert.match(content, /проверка правил, архитектуры, research и кода — их работа/);
   assert.match(content, /Не ставь предварительную оценку без агентов/);
   assert.match(content, /Итоговую оценку 0–100 выставляй только после чтения результатов всех трёх агентов/);
   assert.match(content, /параллельно/);

@@ -51,9 +51,9 @@ description: 'Полирует готовый план из `docs/plans/...` д�
 - входа нет — спроси, показав несколько последних планов;
 - `docs/plans/` нет или она пуста — остановись: `blocked: нужен готовый план`.
 
-Прочитай план целиком. По front matter извлеки `status`, `mode`, `plan_size`, `test_strategy`, `logging_strategy`, `sources.rules`, `sources.arch`, `sources.research`, `meta_reviewers`.
+Прочитай только выбранный план целиком. По front matter извлеки `status`, `mode`, `plan_size`, `test_strategy`, `logging_strategy`, `sources.rules`, `sources.arch`, `sources.research`, `meta_reviewers`.
 
-Прочитай `docs/rules.md`, `docs/arch.md` и `sources.research`, если они есть. Если план ссылается на конкретные файлы, модули, API, миграции или тесты, открой только нужные файлы для понимания. Не запускай проверки.
+Сам не читай `docs/rules.md`, `docs/arch.md`, `sources.research` и релевантный код на этом шаге. Передай эти пути агентам в общем промпте: проверка правил, архитектуры, research и кода — их работа. Основной агент может открыть внешний файл только позже и точечно, если нужно проверить конкретное предложение агента перед правкой плана. Не запускай проверки.
 
 ### 2. Запустить три модели
 
