@@ -438,7 +438,7 @@ test('eda-plan and eda-review prefer Codex subagents for normal meta reviews', a
   assert.match(reviewCheck, /Codex exec \/ неинтерактивный fallback/);
 });
 
-test('eda-plan-polish documents isolated plan polishing agents', async () => {
+test('eda-plan-polish documents three full-plan reviewers and forbids checks', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan-polish.md'), 'utf8');
 
   assert.match(content, /name: eda-plan-polish/);
@@ -446,9 +446,10 @@ test('eda-plan-polish documents isolated plan polishing agents', async () => {
   assert.match(content, /Порог качества по умолчанию — `95`/);
   assert.match(content, /Лимит по умолчанию — `5` итераций/);
   assert.match(content, /0–100/);
-  assert.match(content, /completeness-polisher/);
-  assert.match(content, /rules-arch-polisher/);
-  assert.match(content, /execution-readiness-polisher/);
+  assert.match(content, /один общий промпт/);
+  assert.match(content, /каждый проверяет весь план целиком/);
+  assert.match(content, /Не ставь предварительную оценку без агентов/);
+  assert.match(content, /Итоговую оценку 0–100 выставляй только после чтения результатов всех трёх агентов/);
   assert.match(content, /параллельно/);
   assert.match(content, /`haiku`/);
   assert.match(content, /`sonnet`/);
@@ -457,12 +458,16 @@ test('eda-plan-polish documents isolated plan polishing agents', async () => {
   assert.match(content, /`gpt-5\.3-codex`/);
   assert.match(content, /`gpt-5\.5`/);
   assert.match(content, /Не заменяй три уровня одной моделью/);
+  assert.match(content, /Не запускай проверки/);
+  assert.match(content, /test`, `lint`, `build`, `typecheck`/);
   assert.match(content, /Принять/);
   assert.match(content, /Отклонить/);
   assert.match(content, /Не правишь код/);
   assert.match(content, /score не растёт/);
   assert.match(content, /Оценка plan-polish/);
   assert.match(content, /Изменения после plan-polish/);
+  assert.doesNotMatch(content, /Агентов запускай только если оценка ниже порога/);
+  assert.doesNotMatch(content, /агенты не запускались/);
 });
 
 test('eda-review supports draft mode and delegates normal checks', async () => {
