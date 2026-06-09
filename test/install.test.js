@@ -450,6 +450,13 @@ test('eda-plan-polish documents isolated plan polishing agents', async () => {
   assert.match(content, /rules-arch-polisher/);
   assert.match(content, /execution-readiness-polisher/);
   assert.match(content, /параллельно/);
+  assert.match(content, /`haiku`/);
+  assert.match(content, /`sonnet`/);
+  assert.match(content, /`opus`/);
+  assert.match(content, /`gpt-5\.4-mini`/);
+  assert.match(content, /`gpt-5\.3-codex`/);
+  assert.match(content, /`gpt-5\.5`/);
+  assert.match(content, /Не заменяй три уровня одной моделью/);
   assert.match(content, /Принять/);
   assert.match(content, /Отклонить/);
   assert.match(content, /Не правишь код/);
@@ -619,7 +626,9 @@ test('eda-fix-by-review supports apply-optional mode for orchestrated polishing'
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-fix-by-review.md'), 'utf8');
 
   assert.match(content, /Режим `apply-optional`/);
-  assert.match(content, /применяй сразу без вопроса/);
+  assert.match(content, /сам принимаешь решение без вопроса/);
+  assert.match(content, /не «механически применить все optional»/);
+  assert.match(content, /Отклонённые optional-решения/);
   assert.match(content, /кроме явного режима `apply-optional`/);
 });
 
@@ -647,6 +656,9 @@ test('eda-polish documents the review-check-fix loop and limits', async () => {
   assert.match(content, /eda-review draft/);
   assert.match(content, /eda-review-check/);
   assert.match(content, /eda-fix-by-review apply-optional/);
+  assert.match(content, /Все пункты «править обязательно» исправь/);
+  assert.match(content, /сам реши, применять ли его/);
+  assert.match(content, /чтобы следующие ревьюеры не повторяли/);
   assert.match(content, /изолированном субагенте/);
 });
 
