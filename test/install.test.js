@@ -266,7 +266,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.equal(settings, `version: 1
 
 defaults:
-  # Включает strict-режим по умолчанию для eda-explore, eda-plan, eda-review и eda-review-check.
+  # Включает strict-режим по умолчанию для eda-explore, eda-plan, eda-plan-polish, eda-review и eda-review-check.
   # true | false
   strict: false
   # Задаёт размер плана по умолчанию для eda-plan.
@@ -330,7 +330,7 @@ test('all packaged eda skills describe inline user-message input', async () => {
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
-  const strictSkills = ['eda-explore.md', 'eda-plan.md', 'eda-review.md', 'eda-review-check.md'];
+  const strictSkills = ['eda-explore.md', 'eda-plan.md', 'eda-plan-polish.md', 'eda-review.md', 'eda-review-check.md'];
 
   for (const file of strictSkills) {
     const content = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
@@ -376,12 +376,14 @@ test('eda-review reports only problems, not completed work', async () => {
   assert.doesNotMatch(content, /Статус: <выполнено/);
 });
 
-test('eda-review without arguments reviews uncommitted diff without plan checks', async () => {
+test('eda-review reviews without a plan when none is specified and never asks for it', async () => {
   const review = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
   const reviewCheck = await fs.readFile(path.join(SKILLS_SRC, 'eda-review-check.md'), 'utf8');
 
   assert.match(review, /без аргументов/);
-  assert.match(review, /незакоммиченный `git diff HEAD` без проверки плана/);
+  assert.match(review, /Сверка с планом — только если план есть/);
+  assert.match(review, /Вопрос о плане не задавай никогда/);
+  assert.match(review, /ревьюй без сверки с планом/);
   assert.match(review, /\$PLAN_FILE=none/);
   assert.match(review, /plan: <docs\/plans\/\.\.\. \| none>/);
   assert.match(reviewCheck, /не запускай `plan-check`/);
@@ -461,6 +463,11 @@ test('eda-plan-polish documents three full-plan reviewers and forbids checks', a
   assert.match(content, /`gpt-5\.3-codex`/);
   assert.match(content, /`gpt-5\.5`/);
   assert.match(content, /Не заменяй три уровня одной моделью/);
+  assert.match(content, /strict/);
+  assert.match(content, /кросс-CLI/);
+  assert.match(content, /Claude CLI/);
+  assert.match(content, /Codex CLI/);
+  assert.match(content, /не заменяй кросс-CLI четвёртым локальным субагентом/i);
   assert.match(content, /Не запускай проверки/);
   assert.match(content, /test`, `lint`, `build`, `typecheck`/);
   assert.match(content, /Принять/);
