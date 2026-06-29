@@ -204,6 +204,42 @@ test('cli update-all updates projects from provided directory', async () => {
   assert.equal(await fs.readFile(path.join(project, '.codex/skills/eda-plan/SKILL.md'), 'utf8'), planSource);
 });
 
+test('updateAll skips directories that have a skills folder but no eda skill', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-skip-'));
+  const installed = path.join(root, 'real');
+  const decoyEmpty = path.join(root, 'empty');
+  const decoyForeign = path.join(root, 'foreign');
+  const planSource = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+
+  await fs.mkdir(path.join(installed, '.codex/skills/eda-plan'), { recursive: true });
+  await fs.writeFile(path.join(installed, '.codex/skills/eda-plan/SKILL.md'), 'old plan');
+
+  // Папка скилов есть, но пустая — не наш проект.
+  await fs.mkdir(path.join(decoyEmpty, '.claude/skills'), { recursive: true });
+
+  // Папка скилов есть, но скилы чужие — не наш проект.
+  await fs.mkdir(path.join(decoyForeign, '.claude/skills/other-skill'), { recursive: true });
+  await fs.writeFile(path.join(decoyForeign, '.claude/skills/other-skill/SKILL.md'), 'foreign');
+
+  const result = await updateAll({ root, output: silentOutput() });
+
+  assert.deepEqual(
+    result.updatedProjects.map(project => path.relative(root, project.path)).sort(),
+    ['real']
+  );
+  assert.equal(await fs.readFile(path.join(installed, '.codex/skills/eda-plan/SKILL.md'), 'utf8'), planSource);
+
+  await assert.rejects(
+    fs.stat(path.join(decoyEmpty, '.claude/skills/eda-plan')),
+    err => err?.code === 'ENOENT'
+  );
+  await assert.rejects(
+    fs.stat(path.join(decoyForeign, '.claude/skills/eda-plan')),
+    err => err?.code === 'ENOENT'
+  );
+  assert.equal(await fs.readFile(path.join(decoyForeign, '.claude/skills/other-skill/SKILL.md'), 'utf8'), 'foreign');
+});
+
 test('update removes retired eda-research skills from installed targets', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-'));
   await fs.mkdir(path.join(cwd, '.claude/skills/eda-research'), { recursive: true });
@@ -588,13 +624,20 @@ test('eda-explore asks about meaningful forks and requires concrete output', asy
   assert.match(content, /web search/);
 });
 
-test('eda-send-review keeps safe comment modes inline but confirms state-changing reviews', async () => {
+test('eda-send-review always sends summary plus line comments and confirms state-changing reviews', async () => {
   const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-send-review.md'), 'utf8');
 
-  assert.match(content, /`comment` означает обычный комментарий PR/);
-  assert.match(content, /`review-comment` — review без статуса/);
-  assert.match(content, /Если тип отправки указан в тексте и это `comment` или `review-comment`, используй его без дополнительного выбора/);
-  assert.match(content, /`approve` и `request-changes` всегда подтверждай через `AskUserQuestion`/);
+  // Единый формат: сводка (тело review) + комментарии к строкам кода через Reviews API.
+  assert.match(content, /Единый формат всегда/);
+  assert.match(content, /pulls\/<num>\/reviews/);
+  assert.match(content, /"event": "COMMENT\|APPROVE\|REQUEST_CHANGES"/);
+  assert.match(content, /Комментарии к строкам/);
+  // По умолчанию все пункты; подмножество — по тексту.
+  assert.match(content, /По умолчанию — все пункты/);
+  // Замечания вне diff не теряются — уходят в сводку.
+  assert.match(content, /Замечания вне diff/);
+  // approve / request-changes всегда подтверждаются.
+  assert.match(content, /`approve` и `request-changes` подтверждай через `AskUserQuestion` всегда/);
 });
 
 test('worktree skills document naming and merge contract', async () => {
