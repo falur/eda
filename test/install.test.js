@@ -559,6 +559,22 @@ test('all packaged eda skills describe inline user-message input', async () => {
   }
 });
 
+test('eda-docs keeps rules, architecture, and agent entrypoints separate', async () => {
+  const content = await fs.readFile(skillPath('eda-docs'), 'utf8');
+
+  assert.match(content, /Иначе включи все три основных документа/);
+  assert.match(content, /Не спрашивай отдельно, что делать с каждым существующим файлом/);
+  assert.match(content, /В файле должны быть только действующие правила проекта/);
+  assert.match(content, /не вводи числовой лимит/);
+  assert.match(content, /дерево основных папок/);
+  assert.match(content, /выбранный архитектурный подход/);
+  assert.match(content, /явно отдели её от текущего состояния/);
+  assert.match(content, /Сделай `AGENTS\.md` короткой входной картой/);
+  assert.match(content, /Прочитай `AGENTS\.md` и следуй всем инструкциям в нём/);
+  assert.doesNotMatch(content, /и шапку `AGENTS\.md`/);
+  assert.doesNotMatch(content, /5–12 правил/);
+});
+
 test('config-aware skills read docs/settings.yaml', async () => {
   const strictSkills = new Map([
     ['eda-explore', 'explore'],
