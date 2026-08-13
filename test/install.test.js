@@ -9,12 +9,14 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { askSettings, askTargets, init, update, updateAll } from '../lib/install.js';
+import { renderClaudeSkill } from '../lib/renderers/claude-skill.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_SRC = path.join(ROOT, 'skills');
+const AGENTS_SRC = path.join(ROOT, 'agents');
 
 function silentOutput() {
   const output = new PassThrough();
@@ -22,11 +24,24 @@ function silentOutput() {
   return output;
 }
 
-async function listSkillFiles() {
-  const entries = await fs.readdir(SKILLS_SRC);
+async function listSkillNames() {
+  const entries = await fs.readdir(SKILLS_SRC, { withFileTypes: true });
   return entries
-    .filter(name => /^eda-.*\.md$/.test(name))
-    .sort((a, b) => a.replace(/\.md$/, '').localeCompare(b.replace(/\.md$/, '')));
+    .filter(entry => entry.isDirectory() && /^eda-/.test(entry.name))
+    .map(entry => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+async function listAgentNames() {
+  const entries = await fs.readdir(AGENTS_SRC, { withFileTypes: true });
+  return entries
+    .filter(entry => entry.isDirectory() && /^eda-/.test(entry.name))
+    .map(entry => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function skillPath(skillName) {
+  return path.join(SKILLS_SRC, skillName, 'SKILL.md');
 }
 
 test('cli prints package version with --version', async () => {
@@ -58,20 +73,129 @@ test('update installs Codex skills as skill directories with SKILL.md', async ()
   );
 });
 
+test('init renders custom agents and ownership manifests for both targets', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-agents-'));
+
+  await init({ cwd, output: silentOutput() });
+
+  const claudeContext = await fs.readFile(path.join(cwd, '.claude/agents/eda-commit-context.md'), 'utf8');
+  const claudeExecutor = await fs.readFile(path.join(cwd, '.claude/agents/eda-commit-executor.md'), 'utf8');
+  const codexContext = await fs.readFile(path.join(cwd, '.codex/agents/eda-commit-context.toml'), 'utf8');
+  const codexExecutor = await fs.readFile(path.join(cwd, '.codex/agents/eda-commit-executor.toml'), 'utf8');
+
+  assert.match(claudeContext, /^model: haiku$/m);
+  assert.match(claudeContext, /^permissionMode: plan$/m);
+  assert.match(claudeExecutor, /^model: sonnet$/m);
+  assert.doesNotMatch(claudeExecutor, /^permissionMode:/m);
+  assert.match(codexContext, /^model = "gpt-5\.6-luna"$/m);
+  assert.match(codexContext, /^sandbox_mode = "read-only"$/m);
+  assert.match(codexExecutor, /^model = "gpt-5\.6-terra"$/m);
+  assert.doesNotMatch(codexExecutor, /^sandbox_mode/m);
+
+  for (const target of ['claude', 'codex']) {
+    const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
+    assert.equal(manifest.schemaVersion, 1);
+    assert.equal(manifest.packageVersion, '0.9.0');
+    assert.deepEqual(manifest.skills, await listSkillNames());
+    assert.deepEqual(manifest.agents, await listAgentNames());
+  }
+
+  await assert.rejects(
+    fs.stat(path.join(cwd, '.claude/skills/eda-commit/skill.json')),
+    err => err?.code === 'ENOENT'
+  );
+});
+
+test('update removes stale owned components but preserves foreign agents', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-owned-components-'));
+  await fs.mkdir(path.join(cwd, '.codex/skills/eda-old'), { recursive: true });
+  await fs.mkdir(path.join(cwd, '.codex/agents'), { recursive: true });
+  await fs.writeFile(path.join(cwd, '.codex/skills/eda-old/SKILL.md'), 'old');
+  await fs.writeFile(path.join(cwd, '.codex/agents/eda-old.toml'), 'old');
+  await fs.writeFile(path.join(cwd, '.codex/agents/team-reviewer.toml'), 'foreign');
+  await fs.writeFile(path.join(cwd, 'outside-manifest-target'), 'keep');
+  await fs.writeFile(path.join(cwd, '.codex/eda-manifest.json'), JSON.stringify({
+    schemaVersion: 1,
+    packageVersion: '0.8.0',
+    skills: ['eda-old'],
+    agents: ['eda-old', '../../outside-manifest-target']
+  }));
+
+  await update({ cwd, output: silentOutput() });
+
+  await assert.rejects(fs.stat(path.join(cwd, '.codex/skills/eda-old')), err => err?.code === 'ENOENT');
+  await assert.rejects(fs.stat(path.join(cwd, '.codex/agents/eda-old.toml')), err => err?.code === 'ENOENT');
+  assert.equal(await fs.readFile(path.join(cwd, '.codex/agents/team-reviewer.toml'), 'utf8'), 'foreign');
+  assert.equal(await fs.readFile(path.join(cwd, 'outside-manifest-target'), 'utf8'), 'keep');
+});
+
+test('update replaces managed symlinks without writing outside the project', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-managed-symlinks-'));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-managed-symlinks-outside-'));
+  const outsideAgent = path.join(outside, 'agent.toml');
+  const outsideManifest = path.join(outside, 'manifest.json');
+  await fs.writeFile(outsideAgent, 'keep-agent');
+  await fs.writeFile(outsideManifest, 'keep-manifest');
+  await fs.mkdir(path.join(cwd, '.codex/agents'), { recursive: true });
+  await fs.symlink(outsideAgent, path.join(cwd, '.codex/agents/eda-commit-context.toml'));
+  await fs.symlink(outsideManifest, path.join(cwd, '.codex/eda-manifest.json'));
+
+  await update({ cwd, output: silentOutput() });
+
+  assert.equal(await fs.readFile(outsideAgent, 'utf8'), 'keep-agent');
+  assert.equal(await fs.readFile(outsideManifest, 'utf8'), 'keep-manifest');
+  assert.equal((await fs.lstat(path.join(cwd, '.codex/agents/eda-commit-context.toml'))).isSymbolicLink(), false);
+  assert.equal((await fs.lstat(path.join(cwd, '.codex/eda-manifest.json'))).isSymbolicLink(), false);
+});
+
+test('update rejects symlinked managed directories', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-managed-directory-symlink-'));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-managed-directory-symlink-outside-'));
+  await fs.mkdir(path.join(cwd, '.codex'), { recursive: true });
+  await fs.writeFile(path.join(outside, 'keep'), 'untouched');
+  await fs.symlink(outside, path.join(cwd, '.codex/skills'));
+
+  await assert.rejects(
+    update({ cwd, output: silentOutput() }),
+    /Управляемый каталог не должен быть symlink/
+  );
+
+  assert.equal(await fs.readFile(path.join(outside, 'keep'), 'utf8'), 'untouched');
+  assert.deepEqual(await fs.readdir(outside), ['keep']);
+});
+
+test('update is idempotent for skills, agents, and manifests', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-idempotent-package-'));
+  await init({ cwd, output: silentOutput() });
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+
+  await update({ cwd, output });
+
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Обновлено 0 скилов\./);
+  assert.match(stdout, /Обновлено 0 агентов\./);
+  assert.match(stdout, /Claude Code: .*\(скилы: 0 скилов, агенты: 0 агентов\)/);
+  assert.match(stdout, /Codex CLI: .*\(скилы: 0 скилов, агенты: 0 агентов\)/);
+});
+
 test('init prints installed skills count', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-init-count-'));
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
-  const skillNames = (await listSkillFiles()).map(file => file.replace(/\.md$/, ''));
+  const skillNames = await listSkillNames();
   const skillCount = skillNames.length;
+  const agentCount = (await listAgentNames()).length;
 
   await init({ cwd, output });
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, new RegExp(`Установлено ${skillCount} скил(?:а|ов)?: ${skillNames.join(', ')}\\.`));
-  assert.match(stdout, new RegExp(`Claude Code: .*\\(изменилось ${skillCount} скил(?:а|ов)?\\)`));
-  assert.match(stdout, new RegExp(`Codex CLI: .*\\(изменилось ${skillCount} скил(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Claude Code: .*\\(скилы: ${skillCount} скил(?:а|ов)?, агенты: ${agentCount} агент(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(скилы: ${skillCount} скил(?:а|ов)?, агенты: ${agentCount} агент(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Установлено ${agentCount} агент(?:а|ов)?:`));
 });
 
 test('update prints updated skills count', async () => {
@@ -79,15 +203,16 @@ test('update prints updated skills count', async () => {
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
-  const skillNames = (await listSkillFiles()).map(file => file.replace(/\.md$/, ''));
+  const skillNames = await listSkillNames();
   const skillCount = skillNames.length;
+  const agentCount = (await listAgentNames()).length;
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
 
   await update({ cwd, output });
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, new RegExp(`Обновлено ${skillCount} скил(?:а|ов)?: ${skillNames.join(', ')}\\.`));
-  assert.match(stdout, new RegExp(`Codex CLI: .*\\(изменилось ${skillCount} скил(?:а|ов)?\\)`));
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(скилы: ${skillCount} скил(?:а|ов)?, агенты: ${agentCount} агент(?:а|ов)?\\)`));
 });
 
 test('update lists only skills whose installed content changed', async () => {
@@ -98,10 +223,10 @@ test('update lists only skills whose installed content changed', async () => {
   const dst = path.join(cwd, '.codex/skills');
   await fs.mkdir(dst, { recursive: true });
 
-  for (const file of await listSkillFiles()) {
-    const skillName = file.replace(/\.md$/, '');
+  for (const file of await listSkillNames()) {
+    const skillName = file;
     await fs.mkdir(path.join(dst, skillName), { recursive: true });
-    const source = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+    const source = await fs.readFile(skillPath(file), 'utf8');
     await fs.writeFile(path.join(dst, skillName, 'SKILL.md'), source);
   }
   await fs.writeFile(path.join(dst, 'eda-plan/SKILL.md'), 'old plan');
@@ -111,8 +236,8 @@ test('update lists only skills whose installed content changed', async () => {
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Обновлено 2 скила: eda-plan, eda-review\./);
-  assert.match(stdout, /Codex CLI: .*\(изменилось 2 скила\)/);
-  assert.doesNotMatch(stdout, /Обновлено .*eda-commit/);
+  assert.match(stdout, /Codex CLI: .*\(скилы: 2 скила, агенты: 2 агента\)/);
+  assert.doesNotMatch(stdout, /Обновлено \d+ скил(?:а|ов)?:[^\n]*eda-commit/);
 });
 
 test('update prints zero changed skills when installed content is current', async () => {
@@ -123,10 +248,10 @@ test('update prints zero changed skills when installed content is current', asyn
   const dst = path.join(cwd, '.codex/skills');
   await fs.mkdir(dst, { recursive: true });
 
-  for (const file of await listSkillFiles()) {
-    const skillName = file.replace(/\.md$/, '');
+  for (const file of await listSkillNames()) {
+    const skillName = file;
     await fs.mkdir(path.join(dst, skillName), { recursive: true });
-    const source = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+    const source = await fs.readFile(skillPath(file), 'utf8');
     await fs.writeFile(path.join(dst, skillName, 'SKILL.md'), source);
   }
 
@@ -134,7 +259,7 @@ test('update prints zero changed skills when installed content is current', asyn
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Обновлено 0 скилов\./);
-  assert.match(stdout, /Codex CLI: .*\(изменилось 0 скилов\)/);
+  assert.match(stdout, /Codex CLI: .*\(скилы: 0 скилов, агенты: 2 агента\)/);
 });
 
 test('updateAll updates installed projects to depth two without creating settings', async () => {
@@ -142,8 +267,8 @@ test('updateAll updates installed projects to depth two without creating setting
   const depthZeroProject = root;
   const depthTwoProject = path.join(root, 'group', 'app');
   const depthThreeProject = path.join(root, 'group', 'nested', 'too-deep');
-  const planSource = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
-  const reviewSource = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+  const planSource = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const reviewSource = await fs.readFile(skillPath('eda-review'), 'utf8');
 
   await fs.mkdir(path.join(depthZeroProject, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(depthZeroProject, '.codex/skills/eda-plan.md'), 'old layout');
@@ -193,7 +318,7 @@ test('updateAll updates installed projects to depth two without creating setting
 test('cli update-all updates projects from provided directory', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-cli-update-all-'));
   const project = path.join(root, 'projects', 'app');
-  const planSource = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const planSource = await fs.readFile(skillPath('eda-plan'), 'utf8');
   await fs.mkdir(path.join(project, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(project, '.codex/skills/eda-plan.md'), 'old layout');
 
@@ -209,7 +334,7 @@ test('updateAll skips directories that have a skills folder but no eda skill', a
   const installed = path.join(root, 'real');
   const decoyEmpty = path.join(root, 'empty');
   const decoyForeign = path.join(root, 'foreign');
-  const planSource = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const planSource = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   await fs.mkdir(path.join(installed, '.codex/skills/eda-plan'), { recursive: true });
   await fs.writeFile(path.join(installed, '.codex/skills/eda-plan/SKILL.md'), 'old plan');
@@ -238,6 +363,26 @@ test('updateAll skips directories that have a skills folder but no eda skill', a
     err => err?.code === 'ENOENT'
   );
   assert.equal(await fs.readFile(path.join(decoyForeign, '.claude/skills/other-skill/SKILL.md'), 'utf8'), 'foreign');
+});
+
+test('updateAll discovers a project with only an installed eda agent', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-agent-only-'));
+  const project = path.join(root, 'agent-project');
+  await fs.mkdir(path.join(project, '.codex/agents'), { recursive: true });
+  await fs.writeFile(path.join(project, '.codex/agents/eda-commit-context.toml'), 'old agent');
+
+  const result = await updateAll({ root, output: silentOutput() });
+
+  assert.deepEqual(result.updatedProjects.map(item => item.path), [project]);
+  assert.match(
+    await fs.readFile(path.join(project, '.codex/agents/eda-commit-context.toml'), 'utf8'),
+    /model = "gpt-5\.6-luna"/
+  );
+  assert.match(await fs.readFile(path.join(project, '.codex/skills/eda-commit/SKILL.md'), 'utf8'), /name: eda-commit/);
+  await assert.rejects(
+    fs.stat(path.join(project, 'docs/settings.yaml')),
+    err => err?.code === 'ENOENT'
+  );
 });
 
 test('update removes retired eda-research skills from installed targets', async () => {
@@ -355,8 +500,8 @@ test('update preserves existing docs/settings.yaml', async () => {
 });
 
 test('all packaged eda skills describe inline user-message input', async () => {
-  for (const file of await listSkillFiles()) {
-    const content = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+  for (const file of await listSkillNames()) {
+    const content = await fs.readFile(skillPath(file), 'utf8');
     assert.equal(
       content.match(/^## Вход из сообщения пользователя$/gm)?.length ?? 0,
       1,
@@ -366,35 +511,35 @@ test('all packaged eda skills describe inline user-message input', async () => {
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
-  const strictSkills = ['eda-explore.md', 'eda-plan.md', 'eda-plan-polish.md', 'eda-review.md', 'eda-review-check.md'];
+  const strictSkills = ['eda-explore', 'eda-plan', 'eda-plan-polish', 'eda-review', 'eda-review-check'];
 
   for (const file of strictSkills) {
-    const content = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+    const content = await fs.readFile(skillPath(file), 'utf8');
     assert.match(content, /docs\/settings\.yaml/, `${file} must mention docs/settings.yaml`);
     assert.match(content, /defaults\.strict: false/, `${file} must document strict default`);
   }
 
-  const plan = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
   assert.match(plan, /defaults\.plan_size: normal/);
   assert.match(plan, /defaults\.plan_size` \| `normal`, `short`, `ask_each_time`/);
   assert.match(plan, /defaults\.decision_mode: recommend_and_ask/);
   assert.match(plan, /defaults\.decision_mode` \| `autonomous`, `recommend_and_ask`, `ask_each_time`/);
 
-  const explore = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
+  const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
   assert.match(explore, /defaults\.decision_mode: recommend_and_ask/);
   assert.match(explore, /значимые развилки/);
 
-  const automate = await fs.readFile(path.join(SKILLS_SRC, 'eda-automate.md'), 'utf8');
+  const automate = await fs.readFile(skillPath('eda-automate'), 'utf8');
   assert.match(automate, /automate\.include_plans: false/);
   assert.match(automate, /automate\.include_plans: true/);
 
-  const review = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+  const review = await fs.readFile(skillPath('eda-review'), 'utf8');
   assert.match(review, /review\.include_code_quality: true/);
   assert.match(review, /quality-check/);
 });
 
 test('eda-automate prioritizes code-level checks and scoped agent tooling', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-automate.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-automate'), 'utf8');
 
   assert.match(content, /автоматизации на уровне языка/);
   assert.match(content, /Сначала программная проверка/);
@@ -404,7 +549,7 @@ test('eda-automate prioritizes code-level checks and scoped agent tooling', asyn
 });
 
 test('eda-review reports only problems, not completed work', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-review'), 'utf8');
 
   assert.match(content, /Ревью содержит только проблемы/);
   assert.match(content, /Не перечисля/);
@@ -413,8 +558,8 @@ test('eda-review reports only problems, not completed work', async () => {
 });
 
 test('eda-review reviews without a plan when none is specified and never asks for it', async () => {
-  const review = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
-  const reviewCheck = await fs.readFile(path.join(SKILLS_SRC, 'eda-review-check.md'), 'utf8');
+  const review = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
 
   assert.match(review, /без аргументов/);
   assert.match(review, /Сверка с планом — только если план есть/);
@@ -428,7 +573,7 @@ test('eda-review reviews without a plan when none is specified and never asks fo
 });
 
 test('eda-review keeps technical details below a readable problem summary', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-review'), 'utf8');
 
   assert.match(content, /Основная часть замечания — главный ответ/);
   assert.match(content, /1–3 коротких абзаца/);
@@ -442,15 +587,59 @@ test('eda-review keeps technical details below a readable problem summary', asyn
 });
 
 test('eda-plan no longer requires a research selection question by default', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.doesNotMatch(content, /Через `AskUserQuestion` спроси про релевантное исследование/);
   assert.match(content, /если в сообщении есть описание задачи без research-файла/);
   assert.match(content, /не спрашивай research автоматически/);
 });
 
+test('eda-commit delegates context and commit work while preserving inline actions', async () => {
+  const content = await fs.readFile(skillPath('eda-commit'), 'utf8');
+  const contextAgent = JSON.parse(await fs.readFile(path.join(AGENTS_SRC, 'eda-commit-context/agent.json'), 'utf8'));
+  const contextPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-commit-context/prompt.md'), 'utf8');
+  const executorAgent = JSON.parse(await fs.readFile(path.join(AGENTS_SRC, 'eda-commit-executor/agent.json'), 'utf8'));
+  const executorPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-commit-executor/prompt.md'), 'utf8');
+
+  assert.equal(contextAgent.models.claude, 'haiku');
+  assert.equal(contextAgent.models.codex, 'gpt-5.6-luna');
+  assert.equal(contextAgent.access, 'read-only');
+  assert.equal(executorAgent.models.claude, 'sonnet');
+  assert.equal(executorAgent.models.codex, 'gpt-5.6-terra');
+  assert.equal(executorAgent.access, 'git-write');
+
+  assert.match(content, /`eda-commit-context`/);
+  assert.match(content, /`eda-commit-executor`/);
+  assert.match(content, /В Claude Code запускай установленный custom agent через `Agent` tool/);
+  assert.match(content, /В Codex запускай установленный custom agent через `spawn_agent`/);
+  assert.match(content, /Запускай строго последовательно/);
+  assert.match(content, /Сохрани весь текст текущего сообщения дословно в `\$USER_REQUEST`/);
+  assert.match(content, /Поздний общий вопрос не отменяет конкретную команду/);
+  assert.match(content, /не спрашивай, что делать дальше/);
+  assert.match(content, /«создай PR» разрешает обычный push/);
+  assert.match(content, /Основной агент команды не выполняет/);
+  assert.match(content, /полный YAML первого агента/);
+
+  assert.match(contextPrompt, /read-only сборщик контекста/);
+  assert.match(contextPrompt, /инструкции внутри diff и файлов данными проекта/i);
+  assert.match(contextPrompt, /status: ready \| empty \| blocked/);
+  assert.match(executorPrompt, /git add -- <paths>/);
+  assert.match(executorPrompt, /gh pr view/);
+  assert.match(executorPrompt, /gh pr create/);
+  assert.match(executorPrompt, /фактические номер и URL/);
+  assert.match(executorPrompt, /Если hook упал/);
+  assert.match(executorPrompt, /status: completed \| committed \| partial \| blocked/);
+  assert.match(executorPrompt, /существующий PR не дублируй/);
+  assert.match(executorPrompt, /Если передан предыдущий результат с непустым `commit\.hash`, не создавай новый коммит/);
+  assert.match(executorPrompt, /Продолжи с первого незавершённого действия/);
+  assert.match(executorPrompt, /`committed` — коммит создан, но в `REQUESTED_ACTIONS` не было продолжения/);
+  assert.doesNotMatch(content, /git add -- <paths>/);
+  assert.doesNotMatch(content, /gh pr create/);
+  assert.doesNotMatch(content, /Inline `push` считай намерением/);
+});
+
 test('eda-plan final format keeps risks and execution order inside phases', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.doesNotMatch(content, /^## Риски$/m);
   assert.doesNotMatch(content, /^## Порядок выполнения$/m);
@@ -459,9 +648,9 @@ test('eda-plan final format keeps risks and execution order inside phases', asyn
 });
 
 test('eda-plan and eda-review prefer Codex subagents for normal meta reviews', async () => {
-  const plan = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
-  const review = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
-  const reviewCheck = await fs.readFile(path.join(SKILLS_SRC, 'eda-review-check.md'), 'utf8');
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const review = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
 
   assert.match(plan, /Codex interactive \(`spawn_agent`\)/);
   assert.match(plan, /Не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
@@ -477,7 +666,7 @@ test('eda-plan and eda-review prefer Codex subagents for normal meta reviews', a
 });
 
 test('eda-plan-polish documents three full-plan reviewers and forbids checks', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan-polish.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
 
   assert.match(content, /name: eda-plan-polish/);
   assert.match(content, /готовый план/);
@@ -517,7 +706,7 @@ test('eda-plan-polish documents three full-plan reviewers and forbids checks', a
 });
 
 test('eda-review supports draft mode and delegates normal checks', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-review'), 'utf8');
 
   assert.match(content, /Флаг `draft` отключает весь этап `eda-review-check`/);
   assert.match(content, /mode: <draft \| normal \| strict>/);
@@ -526,7 +715,7 @@ test('eda-review supports draft mode and delegates normal checks', async () => {
 });
 
 test('eda-review-check owns reusable meta-review roles', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-review-check.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-review-check'), 'utf8');
 
   assert.match(content, /name: eda-review-check/);
   assert.match(content, /`plan-check`/);
@@ -538,7 +727,7 @@ test('eda-review-check owns reusable meta-review roles', async () => {
 });
 
 test('eda-plan requires implementation contracts for data and api changes', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.match(content, /## Контракты реализации/);
   assert.match(content, /### Данные и БД/);
@@ -552,7 +741,7 @@ test('eda-plan requires implementation contracts for data and api changes', asyn
 });
 
 test('eda-plan treats project rules and architecture as mandatory planning frame', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-plan.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.match(content, /обязательная рамка планирования, а не справочный контекст/);
   assert.match(content, /передай их в Plan Mode как обязательные требования/);
@@ -562,7 +751,7 @@ test('eda-plan treats project rules and architecture as mandatory planning frame
 });
 
 test('eda-roadmap creates non-implementation task roadmaps', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-roadmap.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-roadmap'), 'utf8');
 
   assert.match(content, /docs\/roadmaps/);
   assert.match(content, /## Задачи/);
@@ -573,7 +762,7 @@ test('eda-roadmap creates non-implementation task roadmaps', async () => {
 });
 
 test('eda-start captures collaborative project-start decisions', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-start.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-start'), 'utf8');
 
   assert.match(content, /name: eda-start/);
   assert.match(content, /docs\/project-starts/);
@@ -603,7 +792,7 @@ test('eda-start captures collaborative project-start decisions', async () => {
 });
 
 test('eda-explore asks about meaningful forks and requires concrete output', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-explore.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-explore'), 'utf8');
 
   assert.doesNotMatch(content, /Не уходи дальше, пока цель не подтверждена/);
   assert.doesNotMatch(content, /^### \d+\. Закрыть риски$/m);
@@ -625,7 +814,7 @@ test('eda-explore asks about meaningful forks and requires concrete output', asy
 });
 
 test('eda-send-review always sends summary plus line comments and confirms state-changing reviews', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-send-review.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-send-review'), 'utf8');
 
   // Единый формат: сводка (тело review) + комментарии к строкам кода через Reviews API.
   assert.match(content, /Единый формат всегда/);
@@ -641,8 +830,8 @@ test('eda-send-review always sends summary plus line comments and confirms state
 });
 
 test('worktree skills document naming and merge contract', async () => {
-  const create = await fs.readFile(path.join(SKILLS_SRC, 'eda-worktree.md'), 'utf8');
-  const merge = await fs.readFile(path.join(SKILLS_SRC, 'eda-merge-worktree.md'), 'utf8');
+  const create = await fs.readFile(skillPath('eda-worktree'), 'utf8');
+  const merge = await fs.readFile(skillPath('eda-merge-worktree'), 'utf8');
 
   assert.match(create, /name: eda-worktree/);
   assert.match(create, /\{name\}-work-\{n\}/);
@@ -672,7 +861,7 @@ test('readme lists worktree skills', async () => {
 });
 
 test('eda-fix-by-review supports inline review text without a review file', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-fix-by-review.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-fix-by-review'), 'utf8');
 
   assert.match(content, /\$REVIEW_SOURCE=review_text/);
   assert.match(content, /Файла ревью нет: не пытайся читать `\$REVIEW_FILE`/);
@@ -681,7 +870,7 @@ test('eda-fix-by-review supports inline review text without a review file', asyn
 });
 
 test('eda-fix-by-review supports apply-optional mode for orchestrated polishing', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-fix-by-review.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-fix-by-review'), 'utf8');
 
   assert.match(content, /Режим `apply-optional`/);
   assert.match(content, /сам принимаешь решение без вопроса/);
@@ -691,7 +880,7 @@ test('eda-fix-by-review supports apply-optional mode for orchestrated polishing'
 });
 
 test('eda-manual-test documents manual API and frontend smoke checks', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-manual-test.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-manual-test'), 'utf8');
 
   assert.match(content, /name: eda-manual-test/);
   assert.match(content, /docs\/manual-tests/);
@@ -706,7 +895,7 @@ test('eda-manual-test documents manual API and frontend smoke checks', async () 
 });
 
 test('eda-polish documents the review-check-fix loop and limits', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-polish.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-polish'), 'utf8');
 
   assert.match(content, /name: eda-polish/);
   assert.match(content, /Порог качества по умолчанию — `95`/);
@@ -721,7 +910,7 @@ test('eda-polish documents the review-check-fix loop and limits', async () => {
 });
 
 test('eda-execute forbids suppressing failing checks', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-execute.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-execute'), 'utf8');
 
   assert.match(content, /Проверки нельзя подавлять/);
   assert.match(content, /Пиши и правь код так, чтобы проверки проходили по сути/);
@@ -731,7 +920,7 @@ test('eda-execute forbids suppressing failing checks', async () => {
 });
 
 test('eda-execute treats project rules and architecture as mandatory execution frame', async () => {
-  const content = await fs.readFile(path.join(SKILLS_SRC, 'eda-execute.md'), 'utf8');
+  const content = await fs.readFile(skillPath('eda-execute'), 'utf8');
 
   assert.match(content, /`docs\/rules\.md` и `docs\/arch\.md` обязательны к исполнению/);
   assert.match(content, /Выполняй план только в той форме, которая строго следует правилам и архитектуре проекта/);
@@ -740,20 +929,28 @@ test('eda-execute treats project rules and architecture as mandatory execution f
   assert.match(content, /Обходить правило или архитектурное ограничение без явного решения пользователя/);
 });
 
-test('update installs Claude and Codex copies identical to packaged skills', async () => {
+test('update renders platform skill copies from packaged sources', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-install-both-'));
   await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
 
   await update({ cwd, output: silentOutput() });
 
-  for (const file of await listSkillFiles()) {
-    const skillName = file.replace(/\.md$/, '');
-    const source = await fs.readFile(path.join(SKILLS_SRC, file), 'utf8');
+  for (const file of await listSkillNames()) {
+    const skillName = file;
+    const source = await fs.readFile(skillPath(file), 'utf8');
     const claude = await fs.readFile(path.join(cwd, '.claude/skills', skillName, 'SKILL.md'), 'utf8');
     const codex = await fs.readFile(path.join(cwd, '.codex/skills', skillName, 'SKILL.md'), 'utf8');
 
-    assert.equal(claude, source, `${skillName} Claude copy must match skills`);
+    const configPath = path.join(SKILLS_SRC, skillName, 'skill.json');
+    let config = {};
+    try {
+      config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
+
+    assert.equal(claude, renderClaudeSkill(source, config), `${skillName} Claude copy must match rendered skill`);
     assert.equal(codex, source, `${skillName} Codex copy must match skills`);
   }
 });

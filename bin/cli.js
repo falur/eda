@@ -6,12 +6,12 @@ const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 const cmd = process.argv[2];
 
-const HELP = `eda — установка и обновление скилов eda-* для Claude Code и Codex CLI.
+const HELP = `eda — установка и обновление скилов и агентов eda-* для Claude Code и Codex CLI.
 
 Использование:
-  eda init     — выбрать целевые среды (Claude / Codex / обе) и установить скилы
-  eda update   — обновить уже установленные скилы в текущем проекте
-  eda update-all [dir] — обновить уже установленные скилы во всех проектах внутри dir
+  eda init     — выбрать целевые среды (Claude / Codex / обе) и установить пакет
+  eda update   — обновить уже установленные скилы и агенты в текущем проекте
+  eda update-all [dir] — обновить пакет во всех найденных проектах внутри dir
   eda --version — показать версию
   eda --help   — показать эту справку
 `;

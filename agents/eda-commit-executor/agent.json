@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-commit-executor",
+  "description": "Формирует сообщение, точечно коммитит выбранные изменения и выполняет явно разрешённые push, PR или merge-действия для eda-commit.",
+  "models": {
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
+  },
+  "reasoning": {
+    "claude": "medium",
+    "codex": "medium"
+  },
+  "access": "git-write",
+  "maxTurns": 30
+}
