@@ -220,6 +220,7 @@ test('update lists only skills whose installed content changed', async () => {
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
+  const agentCount = (await listAgentNames()).length;
   const dst = path.join(cwd, '.codex/skills');
   await fs.mkdir(dst, { recursive: true });
 
@@ -236,7 +237,7 @@ test('update lists only skills whose installed content changed', async () => {
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Обновлено 2 скила: eda-plan, eda-review\./);
-  assert.match(stdout, /Codex CLI: .*\(скилы: 2 скила, агенты: 2 агента\)/);
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(скилы: 2 скила, агенты: ${agentCount} агент(?:а|ов)?\\)`));
   assert.doesNotMatch(stdout, /Обновлено \d+ скил(?:а|ов)?:[^\n]*eda-commit/);
 });
 
@@ -245,6 +246,7 @@ test('update prints zero changed skills when installed content is current', asyn
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
+  const agentCount = (await listAgentNames()).length;
   const dst = path.join(cwd, '.codex/skills');
   await fs.mkdir(dst, { recursive: true });
 
@@ -259,7 +261,7 @@ test('update prints zero changed skills when installed content is current', asyn
 
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Обновлено 0 скилов\./);
-  assert.match(stdout, /Codex CLI: .*\(скилы: 0 скилов, агенты: 2 агента\)/);
+  assert.match(stdout, new RegExp(`Codex CLI: .*\\(скилы: 0 скилов, агенты: ${agentCount} агент(?:а|ов)?\\)`));
 });
 
 test('updateAll updates installed projects to depth two without creating settings', async () => {
@@ -893,17 +895,39 @@ test('eda-send-review always sends summary plus line comments and confirms state
 test('worktree skills document naming and merge contract', async () => {
   const create = await fs.readFile(skillPath('eda-worktree'), 'utf8');
   const merge = await fs.readFile(skillPath('eda-merge-worktree'), 'utf8');
+  const createConfig = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-worktree/skill.json'), 'utf8'));
+  const mergeConfig = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-merge-worktree/skill.json'), 'utf8'));
+  const createAgent = JSON.parse(await fs.readFile(path.join(AGENTS_SRC, 'eda-worktree-executor/agent.json'), 'utf8'));
+  const mergeAgent = JSON.parse(await fs.readFile(path.join(AGENTS_SRC, 'eda-merge-worktree-executor/agent.json'), 'utf8'));
+  const createPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-worktree-executor/prompt.md'), 'utf8');
+  const mergePrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-merge-worktree-executor/prompt.md'), 'utf8');
 
   assert.match(create, /name: eda-worktree/);
   assert.match(create, /\{name\}-work-\{n\}/);
-  assert.match(create, /git worktree add -b/);
   assert.match(create, /Базовую ветку берёт из текста рядом с вызовом/);
+  assert.match(create, /`eda-worktree-executor`/);
+  assert.match(create, /основным агентом/);
+  assert.equal(createConfig.models.claude, 'haiku');
+  assert.equal(createConfig.models.codex, 'gpt-5.6-luna');
+  assert.equal(createAgent.models.claude, 'haiku');
+  assert.equal(createAgent.models.codex, 'gpt-5.6-luna');
+  assert.equal(createAgent.access, 'git-write');
+  assert.match(createPrompt, /git worktree add -b/);
+  assert.match(createPrompt, /status: created \| blocked \| failed/);
 
   assert.match(merge, /name: eda-merge-worktree/);
   assert.match(merge, /`work-1`/);
   assert.match(merge, /`1`/);
-  assert.match(merge, /git merge "\$SOURCE_BRANCH"/);
   assert.match(merge, /не удаляет worktree и ветку/);
+  assert.match(merge, /`eda-merge-worktree-executor`/);
+  assert.match(merge, /основным агентом/);
+  assert.equal(mergeConfig.models.claude, 'haiku');
+  assert.equal(mergeConfig.models.codex, 'gpt-5.6-luna');
+  assert.equal(mergeAgent.models.claude, 'haiku');
+  assert.equal(mergeAgent.models.codex, 'gpt-5.6-luna');
+  assert.equal(mergeAgent.access, 'git-write');
+  assert.match(mergePrompt, /git merge "\$SOURCE_BRANCH"/);
+  assert.match(mergePrompt, /status: merged \| already-up-to-date \| conflict \| blocked \| failed/);
 });
 
 test('readme lists worktree skills', async () => {

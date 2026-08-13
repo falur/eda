@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-worktree-executor",
+  "description": "Создаёт соседний git worktree и одноимённую ветку для eda-worktree, не изменяя файлы проекта.",
+  "models": {
+    "claude": "haiku",
+    "codex": "gpt-5.6-luna"
+  },
+  "reasoning": {
+    "claude": "low",
+    "codex": "low"
+  },
+  "access": "git-write",
+  "maxTurns": 20
+}

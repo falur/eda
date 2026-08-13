@@ -97,6 +97,7 @@ node bin/cli.js update-all [dir]
 - `docs/settings.yaml` создаётся только если его ещё нет. Существующий файл нельзя перезаписывать.
 - Актуальный формат `docs/settings.yaml` — только `version: 2`: настройки сгруппированы по коротким именам скилов `explore`, `plan`, `plan-polish`, `review`, `review-check`, `automate`; v1 автоматически не мигрируется и скилами не применяется.
 - Для Codex формат установки — директория с `SKILL.md`: `.codex/skills/<skill>/SKILL.md`.
+- `models.codex` в `skill.json` разрешено хранить как зарезервированную настройку будущего per-skill override; пока Codex её не поддерживает, renderer не добавляет модель в `SKILL.md`.
 - Для агентов форматы установки — `.claude/agents/<agent>.md` и `.codex/agents/<agent>.toml`.
 - `.claude/eda-manifest.json` и `.codex/eda-manifest.json` хранят только компоненты, которыми владеет `eda`; удалять чужие skills/agents нельзя.
 - Старый Codex-формат `.codex/skills/<skill>.md` удаляется при обновлении соответствующего скила.
@@ -132,8 +133,8 @@ description: '...'
   - `eda-polish` оркестрирует цикл `review draft` / `review-check` / `fix-by-review`, но не делает эти шаги основным агентом и не коммитит.
   - `eda-send-review` отправляет готовое ревью, но не делает новое.
   - `eda-commit` оркестрирует двух последовательных субагентов: быстрый собирает контекст, средний коммитит и выполняет явно заданные push/PR/merge-действия; в Claude Code сам скил закреплён за `haiku`, а Codex не поддерживает per-skill model override; основной агент не дописывает логику и сам не выполняет git/GitHub-команды.
-  - `eda-worktree` создаёт отдельный git worktree и ветку, но не правит код.
-  - `eda-merge-worktree` мержит ветку из worktree в текущую, но не удаляет worktree и ветку.
+  - `eda-worktree` на `haiku` / `gpt-5.6-luna` оркестрирует пакетного агента, который создаёт отдельный git worktree и ветку, но не правит код; основной агент сам не выполняет git-команды.
+  - `eda-merge-worktree` на `haiku` / `gpt-5.6-luna` оркестрирует пакетного агента, который мержит ветку из worktree в текущую, но не удаляет worktree и ветку; основной агент сам не выполняет git-команды.
   - `eda-automate` предлагает автоматизации, но не внедряет их.
 
 ## Правила изменения агентов

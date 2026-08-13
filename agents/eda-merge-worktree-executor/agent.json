@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-merge-worktree-executor",
+  "description": "Безопасно мержит ветку из соседнего worktree в текущую ветку для eda-merge-worktree без cleanup и ручного разрешения конфликтов.",
+  "models": {
+    "claude": "haiku",
+    "codex": "gpt-5.6-luna"
+  },
+  "reasoning": {
+    "claude": "low",
+    "codex": "low"
+  },
+  "access": "git-write",
+  "maxTurns": 20
+}
