@@ -601,11 +601,14 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(reviewCheck, /Поля `mode` в front matter ревью и настройки раздела `review`/);
 });
 
-test('eda-automate prioritizes code-level checks and scoped agent tooling', async () => {
+test('eda-automate prioritizes code-level checks without requiring repetition', async () => {
   const content = await fs.readFile(skillPath('eda-automate'), 'utf8');
 
   assert.match(content, /автоматизации на уровне языка/);
   assert.match(content, /Сначала программная проверка/);
+  assert.match(content, /Повторяемость — сигнал, а не обязательное условие/);
+  assert.match(content, /Единичную ошибку тоже предлагай закрыть/);
+  assert.doesNotMatch(content, /Предлагай только повторяющееся/);
   assert.match(content, /automation`, `tests`, `tooling`, `agent`, `rules`, `architecture/);
   assert.match(content, /MCP-сервер/);
   assert.match(content, /Подменять линтер, статанализатор или тест MCP-сервером/);
