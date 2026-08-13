@@ -11,17 +11,17 @@ description: 'Пишет исполнимый план реализации че
 
 Прочитай `docs/settings.yaml`, если файл есть. Прямое указание пользователя в текущем сообщении важнее настроек.
 
-Дефолты: `defaults.strict: false`, `defaults.plan_size: normal`, `defaults.decision_mode: recommend_and_ask`, `defaults.test_strategy: ask_each_time`, `defaults.logging_strategy: ask_each_time`.
+Поддерживается только `version: 2`. При другой версии, отсутствующем разделе или неизвестном значении используй дефолт; настройки старого формата не применяй. Дефолты: `plan.strict: false`, `plan.size: normal`, `plan.decision_mode: recommend_and_ask`, `plan.test_strategy: ask_each_time`, `plan.logging_strategy: ask_each_time`.
 
 | Настройка | Значения | Аргументы в сообщении |
 |---|---|---|
-| `defaults.strict` | `true`, `false` | `strict`; выключение: `normal`, `без strict`, `без строгого режима` |
-| `defaults.plan_size` | `normal`, `short`, `ask_each_time` | `short`; обычный: `обычный план`, `не short` |
-| `defaults.decision_mode` | `autonomous`, `recommend_and_ask`, `ask_each_time` | `autonomous`, `recommend_and_ask`, `ask_each_time`, «сам выбирай», «рекомендуй и спрашивай», «спрашивай всё» |
-| `defaults.test_strategy` | `after_each_phase`, `tdd_each_phase`, `end_of_plan`, `ask_each_time` | явное указание стратегии тестов |
-| `defaults.logging_strategy` | `debug_precise`, `standard`, `ask_each_time` | явное указание стратегии логирования |
+| `plan.strict` | `true`, `false` | `strict`; выключение: `normal`, `без strict`, `без строгого режима` |
+| `plan.size` | `normal`, `short`, `ask_each_time` | `short`; обычный: `обычный план`, `не short` |
+| `plan.decision_mode` | `autonomous`, `recommend_and_ask`, `ask_each_time` | `autonomous`, `recommend_and_ask`, `ask_each_time`, «сам выбирай», «рекомендуй и спрашивай», «спрашивай всё» |
+| `plan.test_strategy` | `after_each_phase`, `tdd_each_phase`, `end_of_plan`, `ask_each_time` | явное указание стратегии тестов |
+| `plan.logging_strategy` | `debug_precise`, `standard`, `ask_each_time` | явное указание стратегии логирования |
 
-Если значение из настроек неизвестно, используй дефолт. Если итоговое значение `plan_size`, `test_strategy` или `logging_strategy` равно `ask_each_time`, задай блокирующий вопрос, кроме случая, когда пользователь уже выбрал значение в текущем сообщении.
+Если итоговое значение `plan.size`, `plan.test_strategy` или `plan.logging_strategy` равно `ask_each_time`, задай блокирующий вопрос, кроме случая, когда пользователь уже выбрал значение в текущем сообщении.
 
 Варианты вопросов: размер плана — `normal` / `short`; тесты — `after_each_phase` / `tdd_each_phase` / `end_of_plan`; логирование — `debug_precise` / `standard`.
 
@@ -59,7 +59,7 @@ description: 'Пишет исполнимый план реализации че
 5. План сохраняется до мета-ревью, иначе ревьюерам нечего читать.
 6. Финальный план должен быть простым, исполнимым и без альтернатив вида «выбрать», «решить», «можно так или так», «предпочтительно».
 7. Если нужны пакеты, библиотеки, CLI, сервисы или другое ПО, а версия не указана в контексте или lock/config-файлах, найди последнюю стабильную версию через context7 или web search по официальным источникам. Не пиши `latest` без конкретной версии и источника.
-8. Если `plan_size: short` не укладывается в ограничения, не сохраняй short-план: объясни причину, оцени нужный объём и спроси, продолжать в `normal` или сузить задачу.
+8. Если выбран `plan.size: short`, но задача не укладывается в ограничения, не сохраняй short-план: объясни причину, оцени нужный объём и спроси, продолжать в `normal` или сузить задачу.
 
 ## Этапы
 

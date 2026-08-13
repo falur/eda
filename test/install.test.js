@@ -427,13 +427,31 @@ test('askSettings returns default project settings without an interactive termin
   const settings = await askSettings({ input, output });
 
   assert.deepEqual(settings, {
-    strict: false,
-    planSize: 'normal',
-    decisionMode: 'recommend_and_ask',
-    testStrategy: 'ask_each_time',
-    loggingStrategy: 'ask_each_time',
-    includePlans: false,
-    includeCodeQuality: true
+    explore: {
+      strict: false,
+      decisionMode: 'recommend_and_ask'
+    },
+    plan: {
+      strict: false,
+      size: 'normal',
+      decisionMode: 'recommend_and_ask',
+      testStrategy: 'ask_each_time',
+      loggingStrategy: 'ask_each_time'
+    },
+    planPolish: {
+      strict: false
+    },
+    review: {
+      strict: false,
+      includeCodeQuality: true
+    },
+    reviewCheck: {
+      strict: false,
+      includeCodeQuality: true
+    },
+    automate: {
+      includePlans: false
+    }
   });
 });
 
@@ -444,34 +462,58 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   await update({ cwd, output: silentOutput() });
 
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
-  assert.equal(settings, `version: 1
+  assert.equal(settings, `version: 2
 
-defaults:
-  # Включает strict-режим по умолчанию для eda-explore, eda-plan, eda-plan-polish, eda-review и eda-review-check.
+explore:
+  # Включает кросс-CLI ревью в eda-explore.
   # true | false
   strict: false
-  # Задаёт размер плана по умолчанию для eda-plan.
-  # normal | short | ask_each_time
-  plan_size: normal
-  # Определяет, как eda-explore ведёт исследовательские развилки, а eda-plan принимает существенные решения.
+  # Определяет, как eda-explore ведёт исследовательские развилки.
   # autonomous | recommend_and_ask | ask_each_time
   decision_mode: recommend_and_ask
-  # Задаёт стратегию тестов по умолчанию для eda-plan.
+
+plan:
+  # Включает кросс-CLI ревью в eda-plan.
+  # true | false
+  strict: false
+  # Задаёт размер плана.
+  # normal | short | ask_each_time
+  size: normal
+  # Определяет, как eda-plan принимает существенные решения.
+  # autonomous | recommend_and_ask | ask_each_time
+  decision_mode: recommend_and_ask
+  # Задаёт стратегию тестов.
   # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
-  # Задаёт стратегию логирования по умолчанию для eda-plan.
+  # Задаёт стратегию логирования.
   # debug_precise | standard | ask_each_time
   logging_strategy: ask_each_time
+
+plan-polish:
+  # Включает кросс-CLI ревью в eda-plan-polish.
+  # true | false
+  strict: false
+
+review:
+  # Задаёт strict-режим по умолчанию для eda-review.
+  # true | false
+  strict: false
+  # Добавляет проверку качества кода в первичное ревью.
+  # true | false
+  include_code_quality: true
+
+review-check:
+  # Включает кросс-CLI ревью в eda-review-check.
+  # true | false
+  strict: false
+  # Добавляет meta-reviewer quality-check.
+  # true | false
+  include_code_quality: true
 
 automate:
   # Добавляет docs/plans/ в обычный запуск eda-automate.
   # true | false
   include_plans: false
-
-review:
-  # Добавляет в eda-review / eda-review-check проверку качества кода и meta-reviewer quality-check.
-  # true | false
-  include_code_quality: true
 `);
 });
 
@@ -491,6 +533,11 @@ test('update preserves existing docs/settings.yaml', async () => {
   assert.equal(settings, 'version: 1\ncustom: true\n');
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Существующий файл не перезаписываю\. Актуальный формат:/);
+  assert.match(stdout, /version: 2/);
+  assert.match(stdout, /explore:/);
+  assert.match(stdout, /plan:/);
+  assert.match(stdout, /plan-polish:/);
+  assert.match(stdout, /review-check:/);
   assert.match(stdout, /# autonomous \| recommend_and_ask \| ask_each_time/);
   assert.match(stdout, /decision_mode: recommend_and_ask/);
   assert.match(stdout, /# after_each_phase \| tdd_each_phase \| end_of_plan \| ask_each_time/);
@@ -511,31 +558,45 @@ test('all packaged eda skills describe inline user-message input', async () => {
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
-  const strictSkills = ['eda-explore', 'eda-plan', 'eda-plan-polish', 'eda-review', 'eda-review-check'];
+  const strictSkills = new Map([
+    ['eda-explore', 'explore'],
+    ['eda-plan', 'plan'],
+    ['eda-plan-polish', 'plan-polish'],
+    ['eda-review', 'review'],
+    ['eda-review-check', 'review-check']
+  ]);
 
-  for (const file of strictSkills) {
+  for (const [file, section] of strictSkills) {
     const content = await fs.readFile(skillPath(file), 'utf8');
     assert.match(content, /docs\/settings\.yaml/, `${file} must mention docs/settings.yaml`);
-    assert.match(content, /defaults\.strict: false/, `${file} must document strict default`);
+    assert.match(content, /version: 2/, `${file} must require settings version 2`);
+    assert.match(content, new RegExp(`${section.replace('-', '\\-')}\\.strict: false`), `${file} must document its strict default`);
+    assert.doesNotMatch(content, /defaults\./, `${file} must not read legacy defaults`);
   }
 
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
-  assert.match(plan, /defaults\.plan_size: normal/);
-  assert.match(plan, /defaults\.plan_size` \| `normal`, `short`, `ask_each_time`/);
-  assert.match(plan, /defaults\.decision_mode: recommend_and_ask/);
-  assert.match(plan, /defaults\.decision_mode` \| `autonomous`, `recommend_and_ask`, `ask_each_time`/);
+  assert.match(plan, /plan\.size: normal/);
+  assert.match(plan, /plan\.size` \| `normal`, `short`, `ask_each_time`/);
+  assert.match(plan, /plan\.decision_mode: recommend_and_ask/);
+  assert.match(plan, /plan\.decision_mode` \| `autonomous`, `recommend_and_ask`, `ask_each_time`/);
 
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
-  assert.match(explore, /defaults\.decision_mode: recommend_and_ask/);
+  assert.match(explore, /explore\.decision_mode: recommend_and_ask/);
   assert.match(explore, /значимые развилки/);
 
   const automate = await fs.readFile(skillPath('eda-automate'), 'utf8');
   assert.match(automate, /automate\.include_plans: false/);
   assert.match(automate, /automate\.include_plans: true/);
+  assert.match(automate, /version: 2/);
 
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
   assert.match(review, /review\.include_code_quality: true/);
-  assert.match(review, /quality-check/);
+  assert.match(review, /не передавай его/);
+
+  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
+  assert.match(reviewCheck, /review-check\.include_code_quality: true/);
+  assert.match(reviewCheck, /quality-check/);
+  assert.match(reviewCheck, /Поля `mode` в front matter ревью и настройки раздела `review`/);
 });
 
 test('eda-automate prioritizes code-level checks and scoped agent tooling', async () => {

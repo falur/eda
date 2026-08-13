@@ -95,6 +95,7 @@ node bin/cli.js update-all [dir]
 - `eda update-all` должен обновлять только найденные среды, не создавать `docs/settings.yaml`, не заходить в `.git`, `.claude`, `.codex`, `node_modules` и не следовать symlink-директориям.
 - Ошибка обновления одного проекта в `eda update-all` не должна останавливать остальные проекты; в конце нужна сводка по успехам, пропускам и ошибкам.
 - `docs/settings.yaml` создаётся только если его ещё нет. Существующий файл нельзя перезаписывать.
+- Актуальный формат `docs/settings.yaml` — только `version: 2`: настройки сгруппированы по коротким именам скилов `explore`, `plan`, `plan-polish`, `review`, `review-check`, `automate`; v1 автоматически не мигрируется и скилами не применяется.
 - Для Codex формат установки — директория с `SKILL.md`: `.codex/skills/<skill>/SKILL.md`.
 - Для агентов форматы установки — `.claude/agents/<agent>.md` и `.codex/agents/<agent>.toml`.
 - `.claude/eda-manifest.json` и `.codex/eda-manifest.json` хранят только компоненты, которыми владеет `eda`; удалять чужие skills/agents нельзя.

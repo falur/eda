@@ -71,7 +71,7 @@ eda update-all ~/Code
 
 ## 🚩 Флаги скилов
 
-У некоторых скилов есть флаг `strict` — он включает дополнительные тяжёлые проверки. Передаётся как часть запроса агенту, например: `eda-explore strict <тема>` или просто `сделай ревью этого PR в strict-режиме`. Также strict можно включить по умолчанию через `defaults.strict: true` в `docs/settings.yaml`.
+У некоторых скилов есть флаг `strict` — он включает дополнительные тяжёлые проверки. Передаётся как часть запроса агенту, например: `eda-explore strict <тема>` или просто `сделай ревью этого PR в strict-режиме`. Также strict можно включить отдельно для каждого скилла в `docs/settings.yaml`, например через `explore.strict: true` или `review-check.strict: true`.
 
 Скилы, которых нет в таблице ниже, флагов не поддерживают — у них всё включено по умолчанию.
 
@@ -94,46 +94,73 @@ eda update-all ~/Code
 Файл по умолчанию:
 
 ```yaml
-version: 1
+version: 2
 
-defaults:
-  # Включает strict-режим по умолчанию для eda-explore, eda-plan, eda-plan-polish, eda-review и eda-review-check.
+explore:
+  # Включает кросс-CLI ревью в eda-explore.
   # true | false
   strict: false
-  # Задаёт размер плана по умолчанию для eda-plan.
-  # normal | short | ask_each_time
-  plan_size: normal
-  # Определяет, как eda-explore ведёт исследовательские развилки, а eda-plan принимает существенные решения.
+  # Определяет, как eda-explore ведёт исследовательские развилки.
   # autonomous | recommend_and_ask | ask_each_time
   decision_mode: recommend_and_ask
-  # Задаёт стратегию тестов по умолчанию для eda-plan.
+
+plan:
+  # Включает кросс-CLI ревью в eda-plan.
+  # true | false
+  strict: false
+  # Задаёт размер плана.
+  # normal | short | ask_each_time
+  size: normal
+  # Определяет, как eda-plan принимает существенные решения.
+  # autonomous | recommend_and_ask | ask_each_time
+  decision_mode: recommend_and_ask
+  # Задаёт стратегию тестов.
   # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
-  # Задаёт стратегию логирования по умолчанию для eda-plan.
+  # Задаёт стратегию логирования.
   # debug_precise | standard | ask_each_time
   logging_strategy: ask_each_time
+
+plan-polish:
+  # Включает кросс-CLI ревью в eda-plan-polish.
+  # true | false
+  strict: false
+
+review:
+  # Включает strict-режим первичного eda-review.
+  # true | false
+  strict: false
+  # Добавляет проверку качества кода в первичное ревью.
+  # true | false
+  include_code_quality: true
+
+review-check:
+  # Включает кросс-CLI ревью в eda-review-check.
+  # true | false
+  strict: false
+  # Добавляет meta-reviewer quality-check.
+  # true | false
+  include_code_quality: true
 
 automate:
   # Добавляет docs/plans/ в обычный запуск eda-automate.
   # true | false
   include_plans: false
-
-review:
-  # Добавляет в eda-review / eda-review-check проверку качества кода и meta-reviewer quality-check.
-  # true | false
-  include_code_quality: true
 ```
 
 Что означают настройки:
-- `defaults.strict` — включает strict-режим по умолчанию для `eda-explore`, `eda-plan`, `eda-plan-polish`, `eda-review` и `eda-review-check`.
-- `defaults.plan_size` — размер плана для `eda-plan`: `normal`, `short` или `ask_each_time`.
-- `defaults.decision_mode` — как `eda-explore` ведёт исследовательские развилки, а `eda-plan` принимает существенные решения: `autonomous` выбирает сам, `recommend_and_ask` рекомендует и спрашивает по значимым развилкам, `ask_each_time` спрашивает по каждой развилке, которая влияет на ход работы или итоговый выбор.
-- `defaults.test_strategy` — стратегия тестов для `eda-plan`: `after_each_phase`, `tdd_each_phase`, `end_of_plan` или `ask_each_time`.
-- `defaults.logging_strategy` — стратегия логирования для `eda-plan`: `debug_precise`, `standard` или `ask_each_time`.
+- `explore.strict` и `explore.decision_mode` — кросс-CLI ревью и способ выбора по исследовательским развилкам в `eda-explore`.
+- `plan.strict`, `plan.size`, `plan.decision_mode`, `plan.test_strategy`, `plan.logging_strategy` — режим и структура работы `eda-plan`.
+- `plan-polish.strict` — кросс-CLI ревью в каждой итерации `eda-plan-polish`.
+- `review.strict` и `review.include_code_quality` — режим и проверка качества в первичном `eda-review`.
+- `review-check.strict` и `review-check.include_code_quality` — кросс-CLI и отдельный мета-ревьюер `quality-check` в `eda-review-check`.
 - `automate.include_plans` — добавляет `docs/plans/` в обычный запуск `eda-automate`.
-- `review.include_code_quality` — добавляет в `eda-review` / `eda-review-check` проверку качества кода и отдельного мета-ревьюера `quality-check`.
 
-`eda init` и `eda update` создают `docs/settings.yaml`, только если файла ещё нет. Существующий файл не перезаписывается. `eda update-all` настройки не создаёт и не меняет.
+Каждый скилл читает только свой раздел. В цепочке `eda-review` → `eda-review-check` вычисленные настройки первичного ревью не переопределяют настройки мета-проверки. Если пользователь явно написал `strict` или `normal`, этот режим действует на всю запрошенную цепочку.
+
+Поддерживается только `version: 2`. Для ручного перехода с v1 перенеси `defaults.strict` в нужные поля `strict`, `defaults.plan_size` в `plan.size`, `defaults.decision_mode` отдельно в `explore.decision_mode` и `plan.decision_mode`, остальные plan-настройки — в раздел `plan`, а `review.include_code_quality` — отдельно в `review.include_code_quality` и `review-check.include_code_quality`.
+
+`eda init` и `eda update` создают `docs/settings.yaml`, только если файла ещё нет. Существующий файл, включая v1, не перезаписывается; его нужно перевести вручную. `eda update-all` настройки не создаёт и не меняет.
 
 ---
 
