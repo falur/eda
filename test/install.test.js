@@ -559,20 +559,58 @@ test('all packaged eda skills describe inline user-message input', async () => {
   }
 });
 
-test('eda-docs keeps rules, architecture, and agent entrypoints separate', async () => {
+test('eda-docs keeps rules, architecture, references, and agent entrypoints separate', async () => {
   const content = await fs.readFile(skillPath('eda-docs'), 'utf8');
 
-  assert.match(content, /Иначе включи все три основных документа/);
-  assert.match(content, /Не спрашивай отдельно, что делать с каждым существующим файлом/);
+  assert.match(content, /если пользователь вызвал просто `eda-docs` и не назвал документ — обнови весь набор/);
+  assert.match(content, /если явно назвал references — обнови `docs\/references\.md` и актуальные карточки/);
+  assert.match(content, /если явно назвал одну карточку — обнови только её и соответствующую строку/);
   assert.match(content, /В файле должны быть только действующие правила проекта/);
   assert.match(content, /не вводи числовой лимит/);
   assert.match(content, /дерево основных папок/);
   assert.match(content, /выбранный архитектурный подход/);
   assert.match(content, /явно отдели её от текущего состояния/);
+  assert.match(content, /Сделай `docs\/references\.md` коротким индексом/);
+  assert.match(content, /один минимальный, законченный и синтаксически цельный пример в fenced code block/);
+  assert.match(content, /Формируй пример как нормализованный эталон/);
+  assert.match(content, /Не добавляй в неё Markdown-ссылки, URL, пути к исходным файлам/);
+  assert.match(content, /собери все такие категории в один `AskUserQuestion`/);
+  assert.match(content, /Перед удалением карточки.*запроси подтверждение/);
   assert.match(content, /Сделай `AGENTS\.md` короткой входной картой/);
   assert.match(content, /Прочитай `AGENTS\.md` и следуй всем инструкциям в нём/);
   assert.doesNotMatch(content, /и шапку `AGENTS\.md`/);
   assert.doesNotMatch(content, /5–12 правил/);
+});
+
+test('implementation workflow reads only applicable project references', async () => {
+  const readers = [
+    'eda-explore',
+    'eda-plan',
+    'eda-plan-polish',
+    'eda-execute',
+    'eda-fix',
+    'eda-fix-by-review',
+    'eda-review',
+    'eda-review-check'
+  ];
+
+  for (const file of readers) {
+    const content = await fs.readFile(skillPath(file), 'utf8');
+    assert.match(content, /docs\/references\.md|sources\.references/, `${file} must discover project references`);
+    assert.match(content, /только (?:карточки|применимые карточки)|только применимые/, `${file} must load references selectively`);
+  }
+
+  const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
+  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
+
+  assert.match(explore, /references: \[<пути к применимым карточкам или пусто>\]/);
+  assert.match(plan, /references: \[<пути к применимым карточкам или пусто>\]/);
+  assert.match(plan, /подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
+  assert.match(planPolish, /Если старый план не содержит `sources\.references`/);
+  assert.match(reviewCheck, /`references-check`/);
+  assert.match(reviewCheck, /при непустом `\$REFERENCE_FILES`/);
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
@@ -758,8 +796,8 @@ test('eda-plan-polish documents three full-plan reviewers and forbids checks', a
   assert.match(content, /один общий промпт/);
   assert.match(content, /каждый проверяет весь план целиком/);
   assert.match(content, /Прочитай только выбранный план целиком/);
-  assert.match(content, /Сам не читай `docs\/rules\.md`, `docs\/arch\.md`, `sources\.research` и релевантный код на этом шаге/);
-  assert.match(content, /проверка правил, архитектуры, research и кода — их работа/);
+  assert.match(content, /Сам не читай `docs\/rules\.md`, `docs\/arch\.md`, `sources\.references`, `sources\.research` и релевантный код на этом шаге/);
+  assert.match(content, /проверка правил, архитектуры, эталонов, research и кода — их работа/);
   assert.match(content, /Не ставь предварительную оценку без агентов/);
   assert.match(content, /Итоговую оценку 0–100 выставляй только после чтения результатов всех трёх агентов/);
   assert.match(content, /параллельно/);
@@ -803,6 +841,7 @@ test('eda-review-check owns reusable meta-review roles', async () => {
   assert.match(content, /`plan-check`/);
   assert.match(content, /`architecture-check`/);
   assert.match(content, /`rules-check`/);
+  assert.match(content, /`references-check`/);
   assert.match(content, /`quality-check`/);
   assert.match(content, /status: draft` → `meta-reviewed/);
   assert.match(content, /status: meta-reviewed` → `final/);
@@ -1023,12 +1062,14 @@ test('eda-execute forbids suppressing failing checks', async () => {
   assert.match(content, /Подавлять ошибки линтеров, тестов, typecheck или других проверок вместо исправления кода/);
 });
 
-test('eda-execute treats project rules and architecture as mandatory execution frame', async () => {
+test('eda-execute treats rules, architecture, and references as mandatory execution frame', async () => {
   const content = await fs.readFile(skillPath('eda-execute'), 'utf8');
 
-  assert.match(content, /`docs\/rules\.md` и `docs\/arch\.md` обязательны к исполнению/);
-  assert.match(content, /Выполняй план только в той форме, которая строго следует правилам и архитектуре проекта/);
-  assert.match(content, /Перед правкой сверяешь действие с `docs\/rules\.md` и `docs\/arch\.md`/);
+  assert.match(content, /План и проектная документация — обязательная рамка исполнения/);
+  assert.match(content, /Прочитай карточки из `sources\.references`/);
+  assert.match(content, /Приоритет: подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
+  assert.match(content, /Перед правкой сверяешь действие с `docs\/rules\.md`, `docs\/arch\.md` и применимыми карточками/);
+  assert.match(content, /необоснованного отклонения от примера/);
   assert.match(content, /Исполнять план, который противоречит правилам или архитектуре проекта/);
   assert.match(content, /Обходить правило или архитектурное ограничение без явного решения пользователя/);
 });
