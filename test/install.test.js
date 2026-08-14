@@ -451,6 +451,9 @@ test('askSettings returns default project settings without an interactive termin
       strict: false,
       includeCodeQuality: true
     },
+    sendReview: {
+      closePreviousReviews: false
+    },
     automate: {
       includePlans: false
     }
@@ -512,6 +515,11 @@ review-check:
   # true | false
   include_code_quality: true
 
+send-review:
+  # После успешной отправки скрывает предыдущие сводки eda-send-review и резолвит их inline-треды.
+  # true | false
+  close_previous_reviews: false
+
 automate:
   # Добавляет docs/plans/ в обычный запуск eda-automate.
   # true | false
@@ -540,6 +548,7 @@ test('update preserves existing docs/settings.yaml', async () => {
   assert.match(stdout, /plan:/);
   assert.match(stdout, /plan-polish:/);
   assert.match(stdout, /review-check:/);
+  assert.match(stdout, /send-review:/);
   assert.match(stdout, /# autonomous \| recommend_and_ask \| ask_each_time/);
   assert.match(stdout, /decision_mode: recommend_and_ask/);
   assert.match(stdout, /# after_each_phase \| tdd_each_phase \| end_of_plan \| ask_each_time/);
@@ -653,6 +662,10 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(reviewCheck, /review-check\.include_code_quality: true/);
   assert.match(reviewCheck, /quality-check/);
   assert.match(reviewCheck, /Поля `mode` в front matter ревью и настройки раздела `review`/);
+
+  const sendReview = await fs.readFile(skillPath('eda-send-review'), 'utf8');
+  assert.match(sendReview, /send-review\.close_previous_reviews: false/);
+  assert.match(sendReview, /version: 2/);
 });
 
 test('eda-automate prioritizes code-level checks without requiring repetition', async () => {
@@ -934,8 +947,14 @@ test('eda-explore asks about meaningful forks and requires concrete output', asy
   assert.match(content, /web search/);
 });
 
-test('eda-send-review always sends summary plus line comments and confirms state-changing reviews', async () => {
+test('eda-send-review sends a comment by default and can close previous generated reviews', async () => {
   const content = await fs.readFile(skillPath('eda-send-review'), 'utf8');
+  const config = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-send-review/skill.json'), 'utf8'));
+
+  assert.equal(config.models.claude, 'sonnet');
+  assert.equal(config.models.codex, 'gpt-5.6-terra');
+  assert.match(renderClaudeSkill(content, config), /^model: sonnet$/m);
+  assert.doesNotMatch(content, /^model:/m);
 
   // Единый формат: сводка (тело review) + комментарии к строкам кода через Reviews API.
   assert.match(content, /Единый формат всегда/);
@@ -946,8 +965,14 @@ test('eda-send-review always sends summary plus line comments and confirms state
   assert.match(content, /По умолчанию — все пункты/);
   // Замечания вне diff не теряются — уходят в сводку.
   assert.match(content, /Замечания вне diff/);
-  // approve / request-changes всегда подтверждаются.
-  assert.match(content, /`approve` и `request-changes` подтверждай через `AskUserQuestion` всегда/);
+  // Без явного статуса используется COMMENT, а score не меняет event.
+  assert.match(content, /По умолчанию — `COMMENT`/);
+  assert.match(content, /Оценка ревью не меняет event/);
+  // Опциональная очистка скрывает предыдущие сводки и резолвит только связанные inline-треды.
+  assert.match(content, /send-review\.close_previous_reviews: false/);
+  assert.match(content, /minimizeComment/);
+  assert.match(content, /resolveReviewThread/);
+  assert.match(content, /текущим GitHub-пользователем/);
 });
 
 test('worktree skills document naming and merge contract', async () => {
