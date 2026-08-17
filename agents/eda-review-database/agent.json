@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-review-database",
+  "description": "Проверяет схемы, миграции, запросы и целостность данных для eda-review.",
+  "models": {
+    "claude": "opus",
+    "codex": "gpt-5.6-sol"
+  },
+  "reasoning": {
+    "claude": "high",
+    "codex": "high"
+  },
+  "access": "read-only",
+  "maxTurns": 30
+}

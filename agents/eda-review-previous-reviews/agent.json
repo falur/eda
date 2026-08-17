@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-review-previous-reviews",
+  "description": "Проверяет незакрытые замечания предыдущих удалённых ревью для eda-review.",
+  "models": {
+    "claude": "haiku",
+    "codex": "gpt-5.6-luna"
+  },
+  "reasoning": {
+    "claude": "low",
+    "codex": "low"
+  },
+  "access": "read-only",
+  "maxTurns": 30
+}

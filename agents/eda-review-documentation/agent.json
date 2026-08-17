@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-review-documentation",
+  "description": "Проверяет полноту пользовательской и проектной документации для eda-review.",
+  "models": {
+    "claude": "haiku",
+    "codex": "gpt-5.6-luna"
+  },
+  "reasoning": {
+    "claude": "low",
+    "codex": "low"
+  },
+  "access": "read-only",
+  "maxTurns": 30
+}

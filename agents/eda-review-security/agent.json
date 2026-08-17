@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-review-security",
+  "description": "Проверяет безопасность и защиту чувствительных операций для eda-review.",
+  "models": {
+    "claude": "opus",
+    "codex": "gpt-5.6-sol"
+  },
+  "reasoning": {
+    "claude": "high",
+    "codex": "high"
+  },
+  "access": "read-only",
+  "maxTurns": 30
+}

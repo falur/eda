@@ -8,7 +8,7 @@ import test from 'node:test';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { askSettings, askTargets, init, update, updateAll } from '../lib/install.js';
+import { askReviewAgentSettings, askSettings, askTargets, init, update, updateAll } from '../lib/install.js';
 import { renderClaudeSkill } from '../lib/renderers/claude-skill.js';
 
 const execFileAsync = promisify(execFile);
@@ -413,6 +413,28 @@ test('update removes retired eda-research skills from installed targets', async 
   assert.match(explore, /name: eda-explore/);
 });
 
+test('update removes retired eda-review-check without touching foreign skills', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-review-check-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills/eda-review-check'), { recursive: true });
+  await fs.mkdir(path.join(cwd, '.codex/skills/eda-review-check'), { recursive: true });
+  await fs.mkdir(path.join(cwd, '.codex/skills/team-review'), { recursive: true });
+  await fs.writeFile(path.join(cwd, '.claude/skills/eda-review-check/SKILL.md'), 'retired');
+  await fs.writeFile(path.join(cwd, '.codex/skills/eda-review-check/SKILL.md'), 'retired');
+  await fs.writeFile(path.join(cwd, '.codex/skills/team-review/SKILL.md'), 'foreign');
+
+  await update({ cwd, output: silentOutput() });
+
+  await assert.rejects(
+    fs.stat(path.join(cwd, '.claude/skills/eda-review-check')),
+    err => err?.code === 'ENOENT'
+  );
+  await assert.rejects(
+    fs.stat(path.join(cwd, '.codex/skills/eda-review-check')),
+    err => err?.code === 'ENOENT'
+  );
+  assert.equal(await fs.readFile(path.join(cwd, '.codex/skills/team-review/SKILL.md'), 'utf8'), 'foreign');
+});
+
 test('askTargets defaults to both targets without an interactive terminal', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -428,7 +450,10 @@ test('askSettings returns default project settings without an interactive termin
 
   const settings = await askSettings({ input, output });
 
-  assert.deepEqual(settings, {
+  assert.deepEqual({
+    ...settings,
+    review: undefined
+  }, {
     explore: {
       strict: false,
       decisionMode: 'recommend_and_ask'
@@ -443,14 +468,7 @@ test('askSettings returns default project settings without an interactive termin
     planPolish: {
       strict: false
     },
-    review: {
-      strict: false,
-      includeCodeQuality: true
-    },
-    reviewCheck: {
-      strict: false,
-      includeCodeQuality: true
-    },
+    review: undefined,
     sendReview: {
       closePreviousReviews: false
     },
@@ -458,6 +476,49 @@ test('askSettings returns default project settings without an interactive termin
       includePlans: false
     }
   });
+
+  assert.deepEqual(settings.review.agents, {
+    correctness: { mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    architecture: { mode: 'auto', model: { claude: 'opus', codex: 'gpt-5.6-sol' } },
+    rules: { mode: 'always', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
+    references: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
+    plan_alignment: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    code_quality: { mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    tests: { mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    security: { mode: 'auto', model: { claude: 'opus', codex: 'gpt-5.6-sol' } },
+    performance: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    frontend: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    api: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
+    database: { mode: 'auto', model: { claude: 'opus', codex: 'gpt-5.6-sol' } },
+    documentation: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
+    previous_reviews: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } }
+  });
+});
+
+test('interactive review settings ask mode and per-platform models for enabled checks', async () => {
+  const messages = [];
+  const reviewAgents = await askReviewAgentSettings({
+    input: new PassThrough(),
+    output: new PassThrough(),
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      if (prompt.message === 'Когда запускать review-проверку correctness?') return 'off';
+      if (prompt.message === 'Когда запускать review-проверку frontend?') return 'always';
+      if (prompt.message === 'Какой моделью Claude проверять frontend?') return 'opus';
+      if (prompt.message === 'Какой моделью Codex проверять frontend?') return 'gpt-5.6-sol';
+      return prompt.default;
+    }
+  });
+
+  assert.equal(reviewAgents.correctness.mode, 'off');
+  assert.deepEqual(reviewAgents.correctness.model, { claude: 'sonnet', codex: 'gpt-5.6-terra' });
+  assert.equal(messages.includes('Какой моделью Claude проверять correctness?'), false);
+  assert.equal(messages.includes('Какой моделью Codex проверять correctness?'), false);
+  assert.deepEqual(reviewAgents.frontend, {
+    mode: 'always',
+    model: { claude: 'opus', codex: 'gpt-5.6-sol' }
+  });
+  assert.equal(messages.filter(message => message.startsWith('Когда запускать review-проверку ')).length, 14);
 });
 
 test('update creates default docs/settings.yaml when it is missing', async () => {
@@ -467,64 +528,22 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   await update({ cwd, output: silentOutput() });
 
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
-  assert.equal(settings, `version: 2
-
-explore:
-  # Включает кросс-CLI ревью в eda-explore.
-  # true | false
-  strict: false
-  # Определяет, как eda-explore ведёт исследовательские развилки.
-  # autonomous | recommend_and_ask | ask_each_time
-  decision_mode: recommend_and_ask
-
-plan:
-  # Включает кросс-CLI ревью в eda-plan.
-  # true | false
-  strict: false
-  # Задаёт размер плана.
-  # normal | short | ask_each_time
-  size: normal
-  # Определяет, как eda-plan принимает существенные решения.
-  # autonomous | recommend_and_ask | ask_each_time
-  decision_mode: recommend_and_ask
-  # Задаёт стратегию тестов.
-  # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
-  test_strategy: ask_each_time
-  # Задаёт стратегию логирования.
-  # debug_precise | standard | ask_each_time
-  logging_strategy: ask_each_time
-
-plan-polish:
-  # Включает кросс-CLI ревью в eda-plan-polish.
-  # true | false
-  strict: false
-
-review:
-  # Задаёт strict-режим по умолчанию для eda-review.
-  # true | false
-  strict: false
-  # Добавляет проверку качества кода в первичное ревью.
-  # true | false
-  include_code_quality: true
-
-review-check:
-  # Включает кросс-CLI ревью в eda-review-check.
-  # true | false
-  strict: false
-  # Добавляет meta-reviewer quality-check.
-  # true | false
-  include_code_quality: true
-
-send-review:
-  # После успешной отправки скрывает предыдущие сводки eda-send-review и резолвит их inline-треды.
-  # true | false
-  close_previous_reviews: false
-
-automate:
-  # Добавляет docs/plans/ в обычный запуск eda-automate.
-  # true | false
-  include_plans: false
-`);
+  assert.match(settings, /^version: 2$/m);
+  assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
+  assert.doesNotMatch(settings, /^review-check:/m);
+  assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
+  for (const check of [
+    'correctness', 'architecture', 'rules', 'references', 'plan_alignment', 'code_quality', 'tests',
+    'security', 'performance', 'frontend', 'api', 'database', 'documentation', 'previous_reviews'
+  ]) {
+    assert.match(settings, new RegExp(`^    ${check}:$`, 'm'), `${check} must be generated`);
+  }
+  assert.match(settings, /# always — всегда, auto — когда применимо, off — отключено\./);
+  assert.match(settings, /# Проверяет фронтенд-код, UI, UX, адаптивность и состояния интерфейса\./);
+  assert.match(settings, /claude: opus/);
+  assert.match(settings, /codex: gpt-5\.6-sol/);
+  assert.match(settings, /^send-review:/m);
+  assert.match(settings, /^automate:/m);
 });
 
 test('update preserves existing docs/settings.yaml', async () => {
@@ -547,7 +566,9 @@ test('update preserves existing docs/settings.yaml', async () => {
   assert.match(stdout, /explore:/);
   assert.match(stdout, /plan:/);
   assert.match(stdout, /plan-polish:/);
-  assert.match(stdout, /review-check:/);
+  assert.match(stdout, /review:\n  # Каждая проверка имеет собственный режим запуска/);
+  assert.match(stdout, /previous_reviews:/);
+  assert.doesNotMatch(stdout, /^review-check:/m);
   assert.match(stdout, /send-review:/);
   assert.match(stdout, /# autonomous \| recommend_and_ask \| ask_each_time/);
   assert.match(stdout, /decision_mode: recommend_and_ask/);
@@ -599,8 +620,7 @@ test('implementation workflow reads only applicable project references', async (
     'eda-execute',
     'eda-fix',
     'eda-fix-by-review',
-    'eda-review',
-    'eda-review-check'
+    'eda-review'
   ];
 
   for (const file of readers) {
@@ -612,23 +632,21 @@ test('implementation workflow reads only applicable project references', async (
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
-  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
+  const review = await fs.readFile(skillPath('eda-review'), 'utf8');
 
   assert.match(explore, /references: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(plan, /references: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(plan, /подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
   assert.match(planPolish, /Если старый план не содержит `sources\.references`/);
-  assert.match(reviewCheck, /`references-check`/);
-  assert.match(reviewCheck, /при непустом `\$REFERENCE_FILES`/);
+  assert.match(review, /`references` включай только при непустом `\$REFERENCE_FILES`/);
+  assert.match(review, /остальные → `eda-review-<check>`/);
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
   const strictSkills = new Map([
     ['eda-explore', 'explore'],
     ['eda-plan', 'plan'],
-    ['eda-plan-polish', 'plan-polish'],
-    ['eda-review', 'review'],
-    ['eda-review-check', 'review-check']
+    ['eda-plan-polish', 'plan-polish']
   ]);
 
   for (const [file, section] of strictSkills) {
@@ -655,13 +673,13 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(automate, /version: 2/);
 
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
-  assert.match(review, /review\.include_code_quality: true/);
-  assert.match(review, /не передавай его/);
-
-  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
-  assert.match(reviewCheck, /review-check\.include_code_quality: true/);
-  assert.match(reviewCheck, /quality-check/);
-  assert.match(reviewCheck, /Поля `mode` в front matter ревью и настройки раздела `review`/);
+  assert.match(review, /review\.agents\.<check>\.mode/);
+  assert.match(review, /`always` — запускать при каждом ревью/);
+  assert.match(review, /`auto` — запускать только когда проверка применима/);
+  assert.match(review, /`off` — не запускать/);
+  assert.match(review, /Устаревшие поля `review\.strict`, `review\.include_code_quality` и раздел `review-check` не применяй/);
+  assert.match(review, /architecture.*`opus`.*`gpt-5\.6-sol`/s);
+  assert.match(review, /frontend.*`sonnet`.*`gpt-5\.6-terra`/s);
 
   const sendReview = await fs.readFile(skillPath('eda-send-review'), 'utf8');
   assert.match(sendReview, /send-review\.close_previous_reviews: false/);
@@ -692,31 +710,24 @@ test('eda-review reports only problems, not completed work', async () => {
 
 test('eda-review reviews without a plan when none is specified and never asks for it', async () => {
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
-  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
 
   assert.match(review, /без аргументов/);
-  assert.match(review, /Сверка с планом — только если план есть/);
-  assert.match(review, /Вопрос о плане не задавай никогда/);
-  assert.match(review, /ревьюй без сверки с планом/);
+  assert.match(review, /Вопрос о плане не задавай/);
   assert.match(review, /\$PLAN_FILE=none/);
   assert.match(review, /plan: <docs\/plans\/\.\.\. \| none>/);
-  assert.match(reviewCheck, /не запускай `plan-check`/);
-  assert.match(reviewCheck, /`plan-check` запускай только если/);
-  assert.match(reviewCheck, /только фактически запущенные роли/);
+  assert.match(review, /`plan_alignment` включай только при непустом `\$PLAN_FILE`/);
+  assert.match(review, /Проверка плана пропущена: план не указан и не найден/);
 });
 
 test('eda-review keeps technical details below a readable problem summary', async () => {
   const content = await fs.readFile(skillPath('eda-review'), 'utf8');
 
-  assert.match(content, /Основная часть замечания — главный ответ/);
+  assert.match(content, /Основная часть каждого замечания — главный ответ/);
   assert.match(content, /1–3 коротких абзаца/);
-  assert.match(content, /в эти же абзацы включай весь человеческий верх пункта/);
-  assert.match(content, /короткий контекст, понятный без чтения плана, diff и истории задачи/);
-  assert.match(content, /первый экран пункта можно было прочитать без глубокого знания кода/);
+  assert.match(content, /контекст, понятный без чтения diff или плана/);
   assert.match(content, /Технические детали/);
-  assert.match(content, /Не начинай с имён классов, методов, строк, SQL, DTO, конфигов/);
+  assert.match(content, /Не начинай с внутренних имён/);
   assert.match(content, /Что подтверждает проблему/);
-  assert.doesNotMatch(content, /2–4 коротких абзаца/);
 });
 
 test('eda-plan no longer requires a research selection question by default', async () => {
@@ -780,22 +791,17 @@ test('eda-plan final format keeps risks and execution order inside phases', asyn
   assert.match(content, /линейный порядок задаётся номерами фаз/);
 });
 
-test('eda-plan and eda-review prefer Codex subagents for normal meta reviews', async () => {
+test('eda-plan keeps its fallback while eda-review requires native packaged subagents', async () => {
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
-  const reviewCheck = await fs.readFile(skillPath('eda-review-check'), 'utf8');
 
   assert.match(plan, /Codex interactive \(`spawn_agent`\)/);
   assert.match(plan, /Не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
   assert.match(plan, /Codex exec \/ non-interactive fallback/);
 
-  assert.match(review, /Codex interactive: если доступен инструмент субагентов \(`spawn_agent` или аналог\)/);
-  assert.match(review, /не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
-  assert.match(review, /Codex exec \/ неинтерактивный fallback/);
-
-  assert.match(reviewCheck, /Codex interactive: если доступен инструмент субагентов \(`spawn_agent` или аналог\)/);
-  assert.match(reviewCheck, /не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
-  assert.match(reviewCheck, /Codex exec \/ неинтерактивный fallback/);
+  assert.match(review, /В Codex запускай установленный custom agent через `spawn_agent` или аналог/);
+  assert.match(review, /нативные субагенты недоступны, остановись/);
+  assert.match(review, /не создавай отдельные CLI-процессы/);
 });
 
 test('eda-plan-polish documents three full-plan reviewers and forbids checks', async () => {
@@ -838,26 +844,56 @@ test('eda-plan-polish documents three full-plan reviewers and forbids checks', a
   assert.doesNotMatch(content, /агенты не запускались/);
 });
 
-test('eda-review supports draft mode and delegates normal checks', async () => {
+test('eda-review orchestrates specialized agents without legacy modes or cross cli', async () => {
   const content = await fs.readFile(skillPath('eda-review'), 'utf8');
 
-  assert.match(content, /Флаг `draft` отключает весь этап `eda-review-check`/);
-  assert.match(content, /mode: <draft \| normal \| strict>/);
-  assert.match(content, /Если режим `draft` — не запускай субагентов и не вызывай `eda-review-check`/);
-  assert.match(content, /В normal\/strict запусти `eda-review-check`/);
+  assert.match(content, /Работай как оркестратор установленных `eda-review-\*` агентов/);
+  assert.match(content, /Запусти все выбранные проверки одним параллельным пакетом/);
+  assert.match(content, /один раз повтори того же агента на той же модели/);
+  assert.match(content, /`not_applicable` перенеси в skipped/);
+  assert.match(content, /Несовпадение модели считай ошибкой контракта/);
+  assert.match(content, /score.*Не используй фиксированные вычеты/s);
+  assert.match(content, /UI\/UX проверены по коду; браузерная проверка не выполнялась/);
+  assert.match(content, /Для GitHub\/GitLab URL получи metadata и diff read-only командами `gh`\/`glab`/);
+  assert.match(content, /warning разрешён только для недоступных прошлых обсуждений/);
+  assert.doesNotMatch(content, /mode: <draft \| normal \| strict>/);
+  assert.doesNotMatch(content, /codex exec\s+"/i);
+  assert.doesNotMatch(content, /claude -p/i);
 });
 
-test('eda-review-check owns reusable meta-review roles', async () => {
-  const content = await fs.readFile(skillPath('eda-review-check'), 'utf8');
+test('eda-review roles live in packaged agents with structured contracts', async () => {
+  const expected = [
+    ['correctness', 'sonnet', 'gpt-5.6-terra'],
+    ['architecture', 'opus', 'gpt-5.6-sol'],
+    ['rules', 'haiku', 'gpt-5.6-luna'],
+    ['references', 'haiku', 'gpt-5.6-luna'],
+    ['plan-alignment', 'sonnet', 'gpt-5.6-terra'],
+    ['code-quality', 'sonnet', 'gpt-5.6-terra'],
+    ['tests', 'sonnet', 'gpt-5.6-terra'],
+    ['security', 'opus', 'gpt-5.6-sol'],
+    ['performance', 'sonnet', 'gpt-5.6-terra'],
+    ['frontend', 'sonnet', 'gpt-5.6-terra'],
+    ['api', 'sonnet', 'gpt-5.6-terra'],
+    ['database', 'opus', 'gpt-5.6-sol'],
+    ['documentation', 'haiku', 'gpt-5.6-luna'],
+    ['previous-reviews', 'haiku', 'gpt-5.6-luna']
+  ];
 
-  assert.match(content, /name: eda-review-check/);
-  assert.match(content, /`plan-check`/);
-  assert.match(content, /`architecture-check`/);
-  assert.match(content, /`rules-check`/);
-  assert.match(content, /`references-check`/);
-  assert.match(content, /`quality-check`/);
-  assert.match(content, /status: draft` → `meta-reviewed/);
-  assert.match(content, /status: meta-reviewed` → `final/);
+  for (const [role, claude, codex] of expected) {
+    const dir = path.join(AGENTS_SRC, `eda-review-${role}`);
+    const config = JSON.parse(await fs.readFile(path.join(dir, 'agent.json'), 'utf8'));
+    const prompt = await fs.readFile(path.join(dir, 'prompt.md'), 'utf8');
+    assert.equal(config.name, `eda-review-${role}`);
+    assert.equal(config.models.claude, claude);
+    assert.equal(config.models.codex, codex);
+    assert.equal(config.access, 'read-only');
+    assert.match(prompt, /Верни один YAML-блок/);
+    assert.match(prompt, /status: completed \| not_applicable \| blocked|status: completed \| not_applicable \| blocked \| unavailable/);
+    assert.match(prompt, /findings:/);
+    assert.match(prompt, /evidence:/);
+  }
+
+  await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
 });
 
 test('eda-plan requires implementation contracts for data and api changes', async () => {
@@ -1016,14 +1052,17 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists worktree skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /восемнадцать скилов/);
+  assert.match(content, /семнадцать скилов/);
   assert.match(content, /`eda-start`/);
   assert.match(content, /`eda-plan-polish`/);
   assert.match(content, /`eda-manual-test`/);
   assert.match(content, /docs\/manual-tests/);
   assert.match(content, /`eda-worktree`/);
   assert.match(content, /`eda-merge-worktree`/);
-  assert.match(content, /`eda-review-check`/);
+  assert.match(content, /`eda-review-frontend`/);
+  assert.match(content, /review\.agents\.<check>\.mode/);
+  assert.match(content, /`eda-review-check` выведен из эксплуатации/);
+  assert.doesNotMatch(content, /^\| `eda-review-check`/m);
   assert.match(content, /`eda-polish`/);
   assert.match(content, /\{name\}-work-\{n\}/);
 });
@@ -1062,19 +1101,20 @@ test('eda-manual-test documents manual API and frontend smoke checks', async () 
   assert.match(content, /не устанавливай зависимости молча/);
 });
 
-test('eda-polish documents the review-check-fix loop and limits', async () => {
+test('eda-polish documents the full-review-fix loop and limits', async () => {
   const content = await fs.readFile(skillPath('eda-polish'), 'utf8');
 
   assert.match(content, /name: eda-polish/);
-  assert.match(content, /Порог качества по умолчанию — `95`/);
-  assert.match(content, /Лимит по умолчанию — `5` итераций/);
-  assert.match(content, /eda-review draft/);
-  assert.match(content, /eda-review-check/);
+  assert.match(content, /Порог по умолчанию — `95`/);
+  assert.match(content, /лимит — `5` итераций/);
+  assert.match(content, /полное `eda-review`/);
   assert.match(content, /eda-fix-by-review apply-optional/);
   assert.match(content, /Все пункты «править обязательно» исправь/);
-  assert.match(content, /сам реши, применять ли его/);
+  assert.match(content, /сам решает, применять ли его/);
   assert.match(content, /чтобы следующие ревьюеры не повторяли/);
-  assert.match(content, /изолированном субагенте/);
+  assert.match(content, /изолированным субагентом/);
+  assert.match(content, /reviewed-with-warnings/);
+  assert.doesNotMatch(content, /eda-review-check/);
 });
 
 test('eda-execute forbids suppressing failing checks', async () => {
