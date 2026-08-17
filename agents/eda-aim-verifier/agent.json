@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-aim-verifier",
+  "description": "Независимо проверяет критерии файла цели eda-aim, отмечает подтверждённые пункты и возвращает пробелы исполнителю.",
+  "models": {
+    "claude": "opus",
+    "codex": "gpt-5.6-sol"
+  },
+  "reasoning": {
+    "claude": "high",
+    "codex": "high"
+  },
+  "access": "workspace-write",
+  "maxTurns": 50
+}

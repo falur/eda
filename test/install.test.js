@@ -82,6 +82,8 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   const claudeExecutor = await fs.readFile(path.join(cwd, '.claude/agents/eda-commit-executor.md'), 'utf8');
   const codexContext = await fs.readFile(path.join(cwd, '.codex/agents/eda-commit-context.toml'), 'utf8');
   const codexExecutor = await fs.readFile(path.join(cwd, '.codex/agents/eda-commit-executor.toml'), 'utf8');
+  const claudeAimExecutor = await fs.readFile(path.join(cwd, '.claude/agents/eda-aim-executor.md'), 'utf8');
+  const codexAimExecutor = await fs.readFile(path.join(cwd, '.codex/agents/eda-aim-executor.toml'), 'utf8');
 
   assert.match(claudeContext, /^model: haiku$/m);
   assert.match(claudeContext, /^permissionMode: plan$/m);
@@ -91,6 +93,12 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   assert.match(codexContext, /^sandbox_mode = "read-only"$/m);
   assert.match(codexExecutor, /^model = "gpt-5\.6-terra"$/m);
   assert.doesNotMatch(codexExecutor, /^sandbox_mode/m);
+  assert.match(claudeAimExecutor, /^model: opus$/m);
+  assert.match(claudeAimExecutor, /^tools: Read, Glob, Grep, Bash, Write, Edit, NotebookEdit$/m);
+  assert.doesNotMatch(claudeAimExecutor, /^disallowedTools:/m);
+  assert.doesNotMatch(claudeAimExecutor, /^permissionMode:/m);
+  assert.match(codexAimExecutor, /^model = "gpt-5\.6-sol"$/m);
+  assert.match(codexAimExecutor, /^sandbox_mode = "workspace-write"$/m);
 
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
@@ -780,6 +788,60 @@ test('eda-commit delegates context and commit work while preserving inline actio
   assert.doesNotMatch(content, /git add -- <paths>/);
   assert.doesNotMatch(content, /gh pr create/);
   assert.doesNotMatch(content, /Inline `push` считай намерением/);
+});
+
+test('eda-aim delegates agreement, execution, and independent verification', async () => {
+  const content = await fs.readFile(skillPath('eda-aim'), 'utf8');
+  const expectedAgents = [
+    ['planner', 'sonnet', 'gpt-5.6-terra'],
+    ['executor', 'opus', 'gpt-5.6-sol'],
+    ['verifier', 'opus', 'gpt-5.6-sol']
+  ];
+
+  assert.match(content, /name: eda-aim/);
+  assert.match(content, /docs\/aims\/\{YYYY-MM-DD\}_\{HH-MM\}_\{slug\}\.md/);
+  assert.match(content, /Подтверждение точного списка новых целей — отдельный обязательный вопрос человеку/);
+  assert.match(content, /В автоматическом режиме не спрашивай пользователя/);
+  assert.match(content, /автоматический режим это подтверждение не пропускает/);
+  assert.match(content, /одним или несколькими последовательными вызовами `eda-aim-executor`/);
+  assert.match(content, /Не запускай одновременную запись нескольких агентов в общий файл цели/);
+  assert.match(content, /Продолжай цикл исполнитель → проверяющий без произвольного лимита/);
+  assert.match(content, /`failed` — не завершай цель/);
+  assert.match(content, /передай полный результат следующему вызову executor/);
+  assert.match(content, /возвращает `needs_skill` со структурированным `skill_request`/);
+  assert.match(content, /отдельную цепочку верхнего уровня/);
+  assert.match(content, /временно становится владельцем только его штатной оркестраторской части/);
+  assert.match(content, /Приостанови запросившего исполнителя или проверяющего/);
+  assert.match(content, /Если применён другой `eda-\*`-скил/);
+  assert.match(content, /ссылку на каждый созданный им артефакт/);
+  assert.match(content, /Формулировать цели, менять код, выполнять реализацию или ставить финальную отметку основным агентом/);
+  assert.doesNotMatch(content, /\[TODO:/);
+  assert.doesNotMatch(content, /^## Overview$/m);
+
+  for (const [role, claude, codex] of expectedAgents) {
+    const dir = path.join(AGENTS_SRC, `eda-aim-${role}`);
+    const config = JSON.parse(await fs.readFile(path.join(dir, 'agent.json'), 'utf8'));
+    const prompt = await fs.readFile(path.join(dir, 'prompt.md'), 'utf8');
+    assert.equal(config.name, `eda-aim-${role}`);
+    assert.equal(config.models.claude, claude);
+    assert.equal(config.models.codex, codex);
+    assert.equal(config.access, 'workspace-write');
+    assert.match(prompt, /Верни один YAML-блок/);
+  }
+
+  const plannerPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-aim-planner/prompt.md'), 'utf8');
+  const executorPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-aim-executor/prompt.md'), 'utf8');
+  const verifierPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-aim-verifier/prompt.md'), 'utf8');
+  assert.match(plannerPrompt, /Только при `APPROVAL: approved` создай/);
+  assert.match(plannerPrompt, /status: needs_input \| needs_approval \| ready \| blocked/);
+  assert.match(executorPrompt, /Не ставь отметку `\[x\]` и статус `достигнута`/);
+  assert.match(executorPrompt, /status: completed \| needs_input \| needs_skill \| blocked \| failed/);
+  assert.match(executorPrompt, /не повторяй ту же попытку без изменений/);
+  assert.match(executorPrompt, /не запускай вложенного субагента/);
+  assert.match(verifierPrompt, /Не доверяй самоотчёту исполнителя/);
+  assert.match(verifierPrompt, /Не запрашивай скиллы, которые правят код/);
+  assert.match(verifierPrompt, /status: reached \| needs_work \| needs_input \| needs_skill \| blocked/);
+  assert.match(verifierPrompt, /не запускай вложенных субагентов сам/);
 });
 
 test('eda-plan final format keeps risks and execution order inside phases', async () => {

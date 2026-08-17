@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-aim-executor",
+  "description": "Выполняет назначенные пункты согласованного файла цели eda-aim, применяет подходящие eda-скилы и ведёт журнал.",
+  "models": {
+    "claude": "opus",
+    "codex": "gpt-5.6-sol"
+  },
+  "reasoning": {
+    "claude": "high",
+    "codex": "high"
+  },
+  "access": "workspace-write",
+  "maxTurns": 80
+}

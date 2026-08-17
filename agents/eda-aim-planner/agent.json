@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-aim-planner",
+  "description": "Согласует простой проверяемый список целей для eda-aim и после подтверждения создаёт компактный файл цели.",
+  "models": {
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
+  },
+  "reasoning": {
+    "claude": "medium",
+    "codex": "medium"
+  },
+  "access": "workspace-write",
+  "maxTurns": 30
+}
