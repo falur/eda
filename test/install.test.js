@@ -462,6 +462,29 @@ test('askSettings returns default project settings without an interactive termin
     ...settings,
     review: undefined
   }, {
+    orhestra: {
+      mode: 'automatic',
+      steps: [
+        { id: 'plan', skill: 'eda-plan', enabled: true, args: '' },
+        { id: 'execute', skill: 'eda-execute', enabled: true, args: '' },
+        { id: 'polish', skill: 'eda-polish', enabled: true, args: 'limit 5' },
+        {
+          id: 'manual-test',
+          skill: 'eda-manual-test',
+          enabled: true,
+          args: '',
+          onFailure: {
+            skill: 'eda-fix',
+            args: '',
+            then: ['polish', 'manual-test'],
+            maxCycles: 5
+          }
+        }
+      ]
+    },
+    aim: {
+      mode: 'automatic'
+    },
     explore: {
       strict: false,
       decisionMode: 'recommend_and_ask'
@@ -537,6 +560,12 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
 
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(settings, /^version: 2$/m);
+  assert.match(settings, /^orhestra:\n  # Режим полного цикла eda-orhestra\.\n  # automatic \| manual\n  mode: automatic/m);
+  assert.match(settings, /^  steps:\n    - id: plan\n      skill: eda-plan\n      enabled: true/m);
+  assert.match(settings, /^    - id: polish\n      skill: eda-polish\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "limit 5"$/m);
+  assert.match(settings, /^      on_failure:\n        skill: eda-fix\n        args: ""\n        # После исправления[^\n]+\n        then:\n          - polish\n          - manual-test\n        max_cycles: 5$/m);
+  assert.doesNotMatch(settings, /^  qa:/m);
+  assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
   assert.doesNotMatch(settings, /^review-check:/m);
   assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
@@ -571,6 +600,11 @@ test('update preserves existing docs/settings.yaml', async () => {
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Существующий файл не перезаписываю\. Актуальный формат:/);
   assert.match(stdout, /version: 2/);
+  assert.match(stdout, /orhestra:\n  # Режим полного цикла eda-orhestra\./);
+  assert.match(stdout, /steps:\n    - id: plan/);
+  assert.match(stdout, /args: "limit 5"/);
+  assert.match(stdout, /on_failure:\n        skill: eda-fix/);
+  assert.match(stdout, /aim:\n  # Режим ответов на рабочие вопросы eda-aim\./);
   assert.match(stdout, /explore:/);
   assert.match(stdout, /plan:/);
   assert.match(stdout, /plan-polish:/);
@@ -692,6 +726,48 @@ test('config-aware skills read docs/settings.yaml', async () => {
   const sendReview = await fs.readFile(skillPath('eda-send-review'), 'utf8');
   assert.match(sendReview, /send-review\.close_previous_reviews: false/);
   assert.match(sendReview, /version: 2/);
+
+  const orhestra = await fs.readFile(skillPath('eda-orhestra'), 'utf8');
+  assert.match(orhestra, /docs\/settings\.yaml/);
+  assert.match(orhestra, /version: 2/);
+  assert.match(orhestra, /orhestra\.mode: automatic/);
+  assert.match(orhestra, /`automatic` или `manual`/);
+  assert.match(orhestra, /orhestra\.steps/);
+  assert.match(orhestra, /`eda-polish`.*`threshold N`.*`limit N`/s);
+  assert.match(orhestra, /`args`/);
+  assert.match(orhestra, /on_failure\.then/);
+
+  const aim = await fs.readFile(skillPath('eda-aim'), 'utf8');
+  assert.match(aim, /docs\/settings\.yaml/);
+  assert.match(aim, /version: 2/);
+  assert.match(aim, /aim:\n  mode: automatic/);
+  assert.match(aim, /`aim\.mode` принимает только `automatic` или `manual`/);
+  assert.match(aim, /Прямое указание режима в текущем сообщении всегда важнее настройки/);
+});
+
+test('eda-orhestra orchestrates the full automatic and manual workflow', async () => {
+  const content = await fs.readFile(skillPath('eda-orhestra'), 'utf8');
+
+  assert.match(content, /name: eda-orhestra/);
+  assert.match(content, /`eda-plan` → `eda-execute` → `eda-polish` → `eda-manual-test`/);
+  assert.match(content, /Если `eda-manual-test` вернул `failed`/);
+  assert.match(content, /Запусти `on_failure\.skill`/);
+  assert.match(content, /выполни активные шаги из `on_failure\.then`/);
+  assert.match(content, /decision_mode: autonomous/);
+  assert.match(content, /decision_mode: recommend_and_ask/);
+  assert.match(content, /предварительным делегированием всех обратимых рабочих решений/);
+  assert.match(content, /текущую ветку/);
+  assert.match(content, /после последних изменений обязателен `passed`/);
+  assert.match(content, /необратимые внешние действия/);
+  assert.match(content, /БД\/API-контракты и подтверждение готового плана/);
+  assert.match(content, /on_failure\.max_cycles/);
+  assert.match(content, /handler без повторного manual-test/);
+  assert.match(content, /отдельного polish-файла нет/);
+  assert.match(content, /Отдельный orchestration-файл не создавай/);
+  assert.match(content, /ручные тесты пропущены настройкой/);
+  assert.match(content, /полировка пропущена настройкой/);
+  assert.match(content, /Не разрешай `eda-orhestra`, `eda-aim`, `eda-commit`/);
+  assert.doesNotMatch(content, /Коммитить, пушить, создавать PR или отправлять ревью\.[\s\S]*разрешено/);
 });
 
 test('eda-automate prioritizes code-level checks without requiring repetition', async () => {
@@ -802,6 +878,8 @@ test('eda-aim delegates agreement, execution, and independent verification', asy
   assert.match(content, /docs\/aims\/\{YYYY-MM-DD\}_\{HH-MM\}_\{slug\}\.md/);
   assert.match(content, /Подтверждение точного списка новых целей — отдельный обязательный вопрос человеку/);
   assert.match(content, /В автоматическом режиме не спрашивай пользователя/);
+  assert.match(content, /без явного режима → `\$MODE=aim\.mode`/);
+  assert.match(content, /иначе `\$MODE=automatic`/);
   assert.match(content, /автоматический режим это подтверждение не пропускает/);
   assert.match(content, /одним или несколькими последовательными вызовами `eda-aim-executor`/);
   assert.match(content, /Не запускай одновременную запись нескольких агентов в общий файл цели/);
@@ -1111,10 +1189,15 @@ test('worktree skills document naming and merge contract', async () => {
   assert.match(mergePrompt, /status: merged \| already-up-to-date \| conflict \| blocked \| failed/);
 });
 
-test('readme lists worktree skills', async () => {
+test('readme lists packaged workflow skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /семнадцать скилов/);
+  assert.match(content, /девятнадцать скилов/);
+  assert.match(content, /`eda-orhestra`/);
+  assert.match(content, /orhestra\.steps/);
+  assert.match(content, /args: "limit 5"/);
+  assert.match(content, /args: "threshold 90 limit 2"/);
+  assert.match(content, /без полировки/);
   assert.match(content, /`eda-start`/);
   assert.match(content, /`eda-plan-polish`/);
   assert.match(content, /`eda-manual-test`/);
