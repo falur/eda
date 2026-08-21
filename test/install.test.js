@@ -767,6 +767,13 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.match(content, /ручные тесты пропущены настройкой/);
   assert.match(content, /полировка пропущена настройкой/);
   assert.match(content, /Не разрешай `eda-orhestra`, `eda-aim`, `eda-commit`/);
+  assert.match(content, /Каждый активный шаг запускай в отдельном изолированном субагенте/);
+  assert.match(content, /`eda-plan`, `eda-plan-polish`, `eda-polish` и `eda-review`/);
+  assert.match(content, /свежий контекст без наследования истории текущего диалога/);
+  assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
+  assert.match(content, /Каждый повтор шага и каждый `on_failure\.skill`/);
+  assert.match(content, /blocked: недоступна изоляция этапа/);
+  assert.doesNotMatch(content, /оркестрируй в текущем верхнем контексте/);
   assert.doesNotMatch(content, /Коммитить, пушить, создавать PR или отправлять ревью\.[\s\S]*разрешено/);
 });
 
