@@ -495,6 +495,44 @@ test('update renames retired eda-automate to eda-discover-automations', async ()
   );
 });
 
+test('update renames eda-docs and eda-start skills', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-renamed-skills-'));
+  const renamedSkills = [
+    ['eda-docs', 'eda-prepare-ai'],
+    ['eda-start', 'eda-new-project']
+  ];
+
+  for (const [oldName] of renamedSkills) {
+    await fs.mkdir(path.join(cwd, '.claude/skills', oldName), { recursive: true });
+    await fs.mkdir(path.join(cwd, '.codex/skills', oldName), { recursive: true });
+    await fs.writeFile(path.join(cwd, '.claude/skills', oldName, 'SKILL.md'), 'old skill');
+    await fs.writeFile(path.join(cwd, '.codex/skills', oldName, 'SKILL.md'), 'old skill');
+    await fs.writeFile(path.join(cwd, '.codex/skills', `${oldName}.md`), 'old Codex layout');
+  }
+
+  await update({ cwd, output: silentOutput() });
+
+  for (const target of ['claude', 'codex']) {
+    for (const [oldName, newName] of renamedSkills) {
+      await assert.rejects(
+        fs.stat(path.join(cwd, `.${target}/skills`, oldName)),
+        err => err?.code === 'ENOENT'
+      );
+      assert.match(
+        await fs.readFile(path.join(cwd, `.${target}/skills`, newName, 'SKILL.md'), 'utf8'),
+        new RegExp(`name: ${newName}`)
+      );
+    }
+  }
+
+  for (const [oldName] of renamedSkills) {
+    await assert.rejects(
+      fs.stat(path.join(cwd, '.codex/skills', `${oldName}.md`)),
+      err => err?.code === 'ENOENT'
+    );
+  }
+});
+
 test('askTargets defaults to both targets without an interactive terminal', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -684,10 +722,10 @@ test('all packaged eda skills describe inline user-message input', async () => {
   }
 });
 
-test('eda-docs keeps rules, architecture, references, and agent entrypoints separate', async () => {
-  const content = await fs.readFile(skillPath('eda-docs'), 'utf8');
+test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoints separate', async () => {
+  const content = await fs.readFile(skillPath('eda-prepare-ai'), 'utf8');
 
-  assert.match(content, /если пользователь вызвал просто `eda-docs` и не назвал документ — обнови весь набор/);
+  assert.match(content, /если пользователь вызвал просто `eda-prepare-ai` и не назвал документ — обнови весь набор/);
   assert.match(content, /если явно назвал references — обнови `docs\/references\.md` и актуальные карточки/);
   assert.match(content, /если явно назвал одну карточку — обнови только её и соответствующую строку/);
   assert.match(content, /В файле должны быть только действующие правила проекта/);
@@ -1138,10 +1176,10 @@ test('eda-roadmap creates non-implementation task roadmaps', async () => {
   assert.match(content, /файлов, библиотек, API/);
 });
 
-test('eda-start captures collaborative project-start decisions', async () => {
-  const content = await fs.readFile(skillPath('eda-start'), 'utf8');
+test('eda-new-project captures collaborative project-start decisions', async () => {
+  const content = await fs.readFile(skillPath('eda-new-project'), 'utf8');
 
-  assert.match(content, /name: eda-start/);
+  assert.match(content, /name: eda-new-project/);
   assert.match(content, /docs\/project-starts/);
   assert.match(content, /Собрать требования/);
   assert.match(content, /Выбрать стек/);
@@ -1265,7 +1303,8 @@ test('readme lists packaged workflow skills', async () => {
   assert.match(content, /args: "limit 5"/);
   assert.match(content, /args: "threshold 90 limit 2"/);
   assert.match(content, /без полировки/);
-  assert.match(content, /`eda-start`/);
+  assert.match(content, /`eda-new-project`/);
+  assert.match(content, /`eda-prepare-ai`/);
   assert.match(content, /`eda-plan-polish`/);
   assert.match(content, /`eda-manual-test`/);
   assert.match(content, /docs\/manual-tests/);

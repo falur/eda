@@ -1,9 +1,9 @@
 ---
-name: eda-docs
+name: eda-prepare-ai
 description: 'Создаёт или обновляет проектную документацию: `docs/rules.md`, `docs/arch.md`, индекс `docs/references.md`, самодостаточные карточки с эталонными примерами кода в `docs/references/`, компактный `AGENTS.md` и минимальный `CLAUDE.md`. Без указания документа обновляет весь набор; по явному запросу может обновить только rules, architecture, references, AGENTS или отдельную карточку. Анализирует реальный проект и не правит код.'
 ---
 
-# Скил: Документатор (eda-docs)
+# Скил: Подготовка проекта для AI (eda-prepare-ai)
 
 Создаёшь или обновляешь `docs/rules.md`, `docs/arch.md`, `docs/references.md`, карточки в `docs/references/`, `AGENTS.md` и `CLAUDE.md`. Карточки показывают на коротком самодостаточном коде, как в этом проекте должны выглядеть контроллеры, сервисы, тесты и другие типовые компоненты.
 
@@ -41,7 +41,7 @@ description: 'Создаёт или обновляет проектную док
 
 Определи область по текущему сообщению:
 
-- если пользователь вызвал просто `eda-docs` и не назвал документ — обнови весь набор: `docs/rules.md`, `docs/arch.md`, `docs/references.md`, все актуальные карточки в `docs/references/`, `AGENTS.md` и `CLAUDE.md`;
+- если пользователь вызвал просто `eda-prepare-ai` и не назвал документ — обнови весь набор: `docs/rules.md`, `docs/arch.md`, `docs/references.md`, все актуальные карточки в `docs/references/`, `AGENTS.md` и `CLAUDE.md`;
 - если явно назвал rules, architecture, `AGENTS.md` или `CLAUDE.md` — обнови только названные документы;
 - если явно назвал references — обнови `docs/references.md` и актуальные карточки, затем добавь или актуализируй ссылку на `docs/references.md` в `AGENTS.md`;
 - если явно назвал одну карточку — обнови только её и соответствующую строку `docs/references.md`.
