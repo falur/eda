@@ -103,7 +103,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '1.0.0');
+    assert.equal(manifest.packageVersion, '1.0.1');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -272,7 +272,7 @@ test('update prints zero changed skills when installed content is current', asyn
   assert.match(stdout, new RegExp(`Codex CLI: .*\\(скилы: 0 скилов, агенты: ${agentCount} агент(?:а|ов)?\\)`));
 });
 
-test('updateAll updates installed projects to depth two without creating settings', async () => {
+test('updateAll updates projects without creating missing settings and migrates v1 settings', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-'));
   const depthZeroProject = root;
   const depthTwoProject = path.join(root, 'group', 'app');
@@ -285,9 +285,11 @@ test('updateAll updates installed projects to depth two without creating setting
 
   await fs.mkdir(path.join(depthTwoProject, '.claude/skills/eda-review'), { recursive: true });
   await fs.mkdir(path.join(depthTwoProject, '.codex/skills/eda-research'), { recursive: true });
+  await fs.mkdir(path.join(depthTwoProject, 'docs'), { recursive: true });
   await fs.writeFile(path.join(depthTwoProject, '.claude/skills/eda-review/SKILL.md'), 'old review');
   await fs.writeFile(path.join(depthTwoProject, '.codex/skills/eda-research/SKILL.md'), 'old research');
   await fs.writeFile(path.join(depthTwoProject, '.codex/skills/eda-plan.md'), 'old layout');
+  await fs.writeFile(path.join(depthTwoProject, 'docs/settings.yaml'), 'version: 1\nautomate:\n  include_plans: true\n');
 
   await fs.mkdir(path.join(depthThreeProject, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(depthThreeProject, '.codex/skills/eda-plan.md'), 'too deep');
@@ -314,10 +316,9 @@ test('updateAll updates installed projects to depth two without creating setting
     fs.stat(path.join(depthZeroProject, 'docs/settings.yaml')),
     err => err?.code === 'ENOENT'
   );
-  await assert.rejects(
-    fs.stat(path.join(depthTwoProject, 'docs/settings.yaml')),
-    err => err?.code === 'ENOENT'
-  );
+  const migratedSettings = await fs.readFile(path.join(depthTwoProject, 'docs/settings.yaml'), 'utf8');
+  assert.match(migratedSettings, /^version: 2$/m);
+  assert.match(migratedSettings, /^discover-automations:\n(?:.*\n)*?  include_plans: true$/m);
   await assert.rejects(
     fs.stat(path.join(depthThreeProject, '.codex/skills/eda-plan/SKILL.md')),
     err => err?.code === 'ENOENT'
@@ -674,7 +675,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.doesNotMatch(settings, /^automate:/m);
 });
 
-test('update preserves existing docs/settings.yaml', async () => {
+test('update migrates docs/settings.yaml from version 1 to version 2', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-existing-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
   const output = new PassThrough();
@@ -682,33 +683,74 @@ test('update preserves existing docs/settings.yaml', async () => {
   output.on('data', chunk => outputChunks.push(chunk));
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.writeFile(settingsPath, 'version: 1\ncustom: true\n');
+  await fs.writeFile(settingsPath, `version: 1
+
+defaults:
+  strict: true
+  plan_size: short
+  decision_mode: autonomous
+  test_strategy: tdd_each_phase
+  logging_strategy: debug_precise
+
+automate:
+  include_plans: true
+
+review:
+  include_code_quality: false
+`);
 
   await update({ cwd, output });
 
   const settings = await fs.readFile(settingsPath, 'utf8');
-  assert.equal(settings, 'version: 1\ncustom: true\n');
+  assert.match(settings, /^version: 2$/m);
+  assert.doesNotMatch(settings, /^defaults:/m);
+  assert.doesNotMatch(settings, /^automate:/m);
+  assert.equal(settings.match(/^  strict: true$/gm)?.length, 3);
+  assert.match(settings, /^  size: short$/m);
+  assert.equal(settings.match(/^  decision_mode: autonomous$/gm)?.length, 2);
+  assert.match(settings, /^  test_strategy: tdd_each_phase$/m);
+  assert.match(settings, /^  logging_strategy: debug_precise$/m);
+  assert.match(settings, /^discover-automations:\n(?:.*\n)*?  include_plans: true$/m);
+  const codeQualityStart = settings.indexOf('    code_quality:');
+  const testsStart = settings.indexOf('    tests:', codeQualityStart);
+  assert.notEqual(codeQualityStart, -1);
+  assert.notEqual(testsStart, -1);
+  assert.match(settings.slice(codeQualityStart, testsStart), /mode: off/);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, /Существующий файл не перезаписываю\. Актуальный формат:/);
-  assert.match(stdout, /version: 2/);
-  assert.match(stdout, /orhestra:\n  # Режим полного цикла eda-orhestra\./);
-  assert.match(stdout, /steps:\n    - id: plan/);
-  assert.match(stdout, /args: "limit 5"/);
-  assert.match(stdout, /on_failure:\n        skill: eda-fix/);
-  assert.match(stdout, /aim:\n  # Режим ответов на рабочие вопросы eda-aim\./);
-  assert.match(stdout, /explore:/);
-  assert.match(stdout, /plan:/);
-  assert.match(stdout, /plan-polish:/);
-  assert.match(stdout, /review:\n  # Каждая проверка имеет собственный режим запуска/);
-  assert.match(stdout, /previous_reviews:/);
-  assert.doesNotMatch(stdout, /^review-check:/m);
-  assert.match(stdout, /send-review:/);
-  assert.match(stdout, /# autonomous \| recommend_and_ask \| ask_each_time/);
-  assert.match(stdout, /decision_mode: recommend_and_ask/);
-  assert.match(stdout, /# after_each_phase \| tdd_each_phase \| end_of_plan \| ask_each_time/);
-  assert.match(stdout, /test_strategy: ask_each_time/);
-  assert.match(stdout, /# debug_precise \| standard \| ask_each_time/);
-  assert.match(stdout, /logging_strategy: ask_each_time/);
+  assert.match(stdout, /Мигрированы настройки docs\/settings\.yaml: version: 1 → version: 2\./);
+});
+
+test('update preserves existing version 2 settings byte for byte', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-v2-'));
+  const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  const original = 'version: 2\ncustom: true\n';
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, original);
+
+  await update({ cwd, output: silentOutput() });
+
+  assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
+});
+
+test('update preserves settings with an unknown version', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-unknown-'));
+  const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  const original = 'version: 7\ncustom: true\n';
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, original);
+
+  await update({ cwd, output });
+
+  assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
+  assert.match(
+    Buffer.concat(outputChunks).toString('utf8'),
+    /Автомиграция не выполнена: безопасно поддерживается только переход version: 1 → version: 2\./
+  );
 });
 
 test('all packaged eda skills describe inline user-message input', async () => {
