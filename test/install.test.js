@@ -741,6 +741,19 @@ test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoint
   assert.match(content, /Перед удалением карточки.*запроси подтверждение/);
   assert.match(content, /Сделай `AGENTS\.md` короткой входной картой/);
   assert.match(content, /Прочитай `AGENTS\.md` и следуй всем инструкциям в нём/);
+  assert.match(content, /Если вызов пришёл из `eda-new-project`, прочитай переданный `docs\/project-starts\/\*\.md`/);
+  assert.match(content, /не требуй от стартового документа готовой архитектуры, правил, матрицы проверок или AI\/MCP-рекомендаций/i);
+  assert.match(content, /считай это полным bootstrap-вызовом/);
+  assert.match(content, /Решить архитектурные развилки/);
+  assert.match(content, /Подобрать AI-скилы, агентные роли и MCP/);
+  assert.match(content, /не переоткрывай подтверждённый стек/i);
+  assert.match(content, /самый строгий стабильный профиль/);
+  assert.match(content, /максимально строгую доступную статическую типизацию/);
+  assert.match(content, /strict.*TypeScript.*mypy\/Pyright.*PHPStan\/Psalm.*Sorbet/s);
+  assert.match(content, /нулевой бюджет предупреждений/);
+  assert.match(content, /без `continue-on-error`/);
+  assert.match(content, /не выдавай её за подтверждённо работающую/);
+  assert.match(content, /Для нового проекта без реального кода не выдумывай эталоны/);
   assert.doesNotMatch(content, /и шапку `AGENTS\.md`/);
   assert.doesNotMatch(content, /5–12 правил/);
 });
@@ -881,6 +894,40 @@ test('eda-discover-automations prioritizes code-level checks without requiring r
   assert.match(content, /automation`, `tests`, `tooling`, `agent`, `rules`, `architecture/);
   assert.match(content, /MCP-сервер/);
   assert.match(content, /Подменять линтер, статанализатор или тест MCP-сервером/);
+  assert.match(content, /Отсутствие истории не отменяет полный аудит/);
+  assert.match(content, /не блокируйся: проведи baseline gap-аудит/);
+});
+
+test('documentation and automation skills require an extreme automatic-check matrix', async () => {
+  const skillNames = ['eda-prepare-ai', 'eda-discover-automations'];
+  const requiredChecks = [
+    /unit.*integration.*contract.*e2e/s,
+    /property-based.*mutation.*fuzz/s,
+    /visual regression.*accessibility.*cross-browser/s,
+    /formatter.*linter.*complexity.*duplication.*dead code/s,
+    /Статическ(?:ий|ого) анализ|Статический анализ/,
+    /forbidden imports.*dependency direction.*cycles/s,
+    /Конфиги|Конфиги\/IaC/,
+    /OpenAPI.*GraphQL.*Proto/s,
+    /migration.*rollback.*schema drift/s,
+    /SAST.*DAST.*SBOM/s,
+    /load.*stress.*soak/s,
+    /reproducible build.*release/s,
+    /health.*readiness.*liveness/s,
+    /browser\/Playwright MCP|browser automation MCP/,
+    /MCP.*выбранного (?:стека|языка\/фреймворка)/s,
+    /pre-commit.*pre-push.*PR CI.*nightly.*release.*post-deploy/s
+  ];
+
+  for (const skillName of skillNames) {
+    const content = await fs.readFile(skillPath(skillName), 'utf8');
+    for (const pattern of requiredChecks) {
+      assert.match(content, pattern, `${skillName} must cover ${pattern}`);
+    }
+    assert.match(content, /не (?:вводи|вводить) (?:фиксированный )?(?:максимум|лимит)|не ограничивайся/i);
+    assert.match(content, /не применимо/);
+    assert.match(content, /MCP.*не (?:заменяет|подменя)|Подменять.*MCP.*нельзя/s);
+  }
 });
 
 test('eda-review reports only problems, not completed work', async () => {
@@ -1182,28 +1229,29 @@ test('eda-new-project captures collaborative project-start decisions', async () 
   assert.match(content, /name: eda-new-project/);
   assert.match(content, /docs\/project-starts/);
   assert.match(content, /Собрать требования/);
-  assert.match(content, /Выбрать стек/);
-  assert.match(content, /Подобрать инструменты качества/);
-  assert.match(content, /форматирование кода/);
-  assert.match(content, /линтеры/);
-  assert.match(content, /статический анализ и typecheck/);
-  assert.match(content, /Подобрать AI-скилы, агентные инструкции и MCP/);
-  assert.match(content, /AI-скилы, slash-команды, агентные инструкции или специализированные роли/);
-  assert.match(content, /готовые скилы можно взять из доступных наборов/);
-  assert.match(content, /проектные скилы стоит написать специально под этот проект/);
-  assert.match(content, /Не ограничивайся `eda-\*`/);
-  assert.match(content, /MCP-сервер/);
-  assert.match(content, /Выбрать архитектуру/);
-  assert.match(content, /Решить правила проекта/);
-  assert.ok(
-    content.indexOf('### 6. Подобрать AI-скилы, агентные инструкции и MCP') >
-      content.indexOf('### 5. Решить правила проекта'),
-    'AI skills and MCP should be selected after architecture and rules'
-  );
-  assert.match(content, /Подбирай рабочий набор AI-инструментов только после требований, стека, инструментов качества, архитектуры и правил/);
+  assert.match(content, /Зафиксировать архитектурные драйверы/);
+  assert.match(content, /Выбрать основной стек/);
+  assert.match(content, /Функциональность и границы/);
+  assert.doesNotMatch(content, /MVP|МВП/i);
+  assert.match(content, /актуальную стабильную версию по официальному источнику/);
+  assert.match(content, /status: ready-for-prepare-ai/);
+  assert.match(content, /Handoff в eda-prepare-ai/);
+  assert.match(content, /не проектируй архитектуру, правила, строгие режимы инструментов, матрицу проверок, AI-скилы, агентные роли или MCP/i);
+  assert.match(content, /хостинг в конкретной стране сам по себе не означает обязательную резидентность данных/);
+  assert.match(content, /не добавляй четвёртый вопрос другим абзацем/);
   assert.match(content, /Интерактивное совместное решение обязательно/);
   assert.match(content, /AskUserQuestion/);
   assert.match(content, /не пишешь код и не ставишь пакеты/i);
+  assert.match(content, /Всегда передать стартовый документ `eda-prepare-ai`/);
+  assert.match(content, /Сразу после сохранения, без дополнительного вопроса/);
+  assert.match(content, /в полном bootstrap-режиме/);
+  assert.match(content, /дождись результата `eda-prepare-ai`/);
+  assert.match(content, /вызови установленный `eda-prepare-ai`/);
+  assert.doesNotMatch(content, /оставить только стартовый документ|Если пользователь отказался/);
+  assert.match(content, /Создавать `docs\/rules\.md`, `docs\/arch\.md`, references, `AGENTS\.md` или `CLAUDE\.md`/);
+  assert.doesNotMatch(content, /^### \d+\. (?:Подобрать инструменты качества|Выбрать архитектуру|Решить правила проекта|Подобрать AI-скилы)/m);
+  assert.doesNotMatch(content, /все 17 групп экстремальной матрицы/);
+  assert.doesNotMatch(content, /property-based|SAST|SBOM|pre-commit|post-deploy/);
 });
 
 test('eda-explore asks about meaningful forks and requires concrete output', async () => {
