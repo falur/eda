@@ -1034,12 +1034,14 @@ test('eda-aim delegates agreement, execution, and independent verification', asy
   assert.match(content, /`failed` — не завершай цель/);
   assert.match(content, /передай полный результат следующему вызову executor/);
   assert.match(content, /возвращает `needs_skill` со структурированным `skill_request`/);
-  assert.match(content, /отдельную цепочку верхнего уровня/);
-  assert.match(content, /временно становится владельцем только его штатной оркестраторской части/);
-  assert.match(content, /Приостанови запросившего исполнителя или проверяющего/);
+  assert.match(content, /может использовать установленные скилы в изолированных субагентах/);
+  assert.match(content, /Запускает новый изолированный субагент с чистым контекстом/);
+  assert.match(content, /Основной агент не применяет запрошенный скил сам/);
+  assert.doesNotMatch(content, /отдельную цепочку верхнего уровня/);
+  assert.doesNotMatch(content, /временно становится владельцем только его штатной оркестраторской части/);
   assert.match(content, /Если применён другой `eda-\*`-скил/);
   assert.match(content, /ссылку на каждый созданный им артефакт/);
-  assert.match(content, /Формулировать цели, менять код, выполнять реализацию или ставить финальную отметку основным агентом/);
+  assert.match(content, /Формулировать цели, применять запрошенные скилы, менять код, выполнять реализацию или ставить финальную отметку основным агентом/);
   assert.doesNotMatch(content, /\[TODO:/);
   assert.doesNotMatch(content, /^## Overview$/m);
 
