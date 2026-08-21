@@ -469,6 +469,32 @@ test('update renames retired eda-execute to eda-plan-execute', async () => {
   );
 });
 
+test('update renames retired eda-automate to eda-discover-automations', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-automate-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills/eda-automate'), { recursive: true });
+  await fs.mkdir(path.join(cwd, '.codex/skills/eda-automate'), { recursive: true });
+  await fs.writeFile(path.join(cwd, '.claude/skills/eda-automate/SKILL.md'), 'old automate');
+  await fs.writeFile(path.join(cwd, '.codex/skills/eda-automate/SKILL.md'), 'old automate');
+  await fs.writeFile(path.join(cwd, '.codex/skills/eda-automate.md'), 'old automate layout');
+
+  await update({ cwd, output: silentOutput() });
+
+  for (const target of ['claude', 'codex']) {
+    await assert.rejects(
+      fs.stat(path.join(cwd, `.${target}/skills/eda-automate`)),
+      err => err?.code === 'ENOENT'
+    );
+    assert.match(
+      await fs.readFile(path.join(cwd, `.${target}/skills/eda-discover-automations/SKILL.md`), 'utf8'),
+      /name: eda-discover-automations/
+    );
+  }
+  await assert.rejects(
+    fs.stat(path.join(cwd, '.codex/skills/eda-automate.md')),
+    err => err?.code === 'ENOENT'
+  );
+});
+
 test('askTargets defaults to both targets without an interactive terminal', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -529,7 +555,7 @@ test('askSettings returns default project settings without an interactive termin
     sendReview: {
       closePreviousReviews: false
     },
-    automate: {
+    discoverAutomations: {
       includePlans: false
     }
   });
@@ -606,7 +632,8 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /claude: opus/);
   assert.match(settings, /codex: gpt-5\.6-sol/);
   assert.match(settings, /^send-review:/m);
-  assert.match(settings, /^automate:/m);
+  assert.match(settings, /^discover-automations:/m);
+  assert.doesNotMatch(settings, /^automate:/m);
 });
 
 test('update preserves existing docs/settings.yaml', async () => {
@@ -735,10 +762,11 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(explore, /explore\.decision_mode: recommend_and_ask/);
   assert.match(explore, /значимые развилки/);
 
-  const automate = await fs.readFile(skillPath('eda-automate'), 'utf8');
-  assert.match(automate, /automate\.include_plans: false/);
-  assert.match(automate, /automate\.include_plans: true/);
-  assert.match(automate, /version: 2/);
+  const discoverAutomations = await fs.readFile(skillPath('eda-discover-automations'), 'utf8');
+  assert.match(discoverAutomations, /discover-automations\.include_plans: false/);
+  assert.match(discoverAutomations, /discover-automations\.include_plans: true/);
+  assert.match(discoverAutomations, /`automate\.include_plans` as compatible fallback|`automate\.include_plans` как совместимый fallback/);
+  assert.match(discoverAutomations, /version: 2/);
 
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
   assert.match(review, /review\.agents\.<check>\.mode/);
@@ -804,8 +832,8 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.doesNotMatch(content, /Коммитить, пушить, создавать PR или отправлять ревью\.[\s\S]*разрешено/);
 });
 
-test('eda-automate prioritizes code-level checks without requiring repetition', async () => {
-  const content = await fs.readFile(skillPath('eda-automate'), 'utf8');
+test('eda-discover-automations prioritizes code-level checks without requiring repetition', async () => {
+  const content = await fs.readFile(skillPath('eda-discover-automations'), 'utf8');
 
   assert.match(content, /автоматизации на уровне языка/);
   assert.match(content, /Сначала программная проверка/);
