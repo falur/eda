@@ -929,13 +929,18 @@ test('eda-aim delegates agreement, execution, and independent verification', asy
   assert.match(verifierPrompt, /не запускай вложенных субагентов сам/);
 });
 
-test('eda-plan final format keeps risks and execution order inside phases', async () => {
+test('eda-plan final format keeps risks, dependencies, and parallel execution inside phases', async () => {
   const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.doesNotMatch(content, /^## Риски$/m);
   assert.doesNotMatch(content, /^## Порядок выполнения$/m);
   assert.match(content, /Риски не выносятся в отдельный обязательный раздел/);
-  assert.match(content, /линейный порядок задаётся номерами фаз/);
+  assert.match(content, /основной поток задаётся номерами фаз, ID задач и их зависимостями/);
+  assert.match(content, /Зависит от: `—`/);
+  assert.match(content, /Параллельно: `\[1\.2\]`/);
+  assert.match(content, /Маркировка должна быть симметричной/);
+  assert.match(content, /При конфликте или зависимости параллельность запрещена/);
+  assert.match(content, /небезопасную или упущенную параллельность/);
 });
 
 test('eda-plan keeps its fallback while eda-review requires native packaged subagents', async () => {
