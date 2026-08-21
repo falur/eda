@@ -443,6 +443,32 @@ test('update removes retired eda-review-check without touching foreign skills', 
   assert.equal(await fs.readFile(path.join(cwd, '.codex/skills/team-review/SKILL.md'), 'utf8'), 'foreign');
 });
 
+test('update renames retired eda-execute to eda-plan-execute', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-execute-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills/eda-execute'), { recursive: true });
+  await fs.mkdir(path.join(cwd, '.codex/skills/eda-execute'), { recursive: true });
+  await fs.writeFile(path.join(cwd, '.claude/skills/eda-execute/SKILL.md'), 'old execute');
+  await fs.writeFile(path.join(cwd, '.codex/skills/eda-execute/SKILL.md'), 'old execute');
+  await fs.writeFile(path.join(cwd, '.codex/skills/eda-execute.md'), 'old execute layout');
+
+  await update({ cwd, output: silentOutput() });
+
+  for (const target of ['claude', 'codex']) {
+    await assert.rejects(
+      fs.stat(path.join(cwd, `.${target}/skills/eda-execute`)),
+      err => err?.code === 'ENOENT'
+    );
+    assert.match(
+      await fs.readFile(path.join(cwd, `.${target}/skills/eda-plan-execute/SKILL.md`), 'utf8'),
+      /name: eda-plan-execute/
+    );
+  }
+  await assert.rejects(
+    fs.stat(path.join(cwd, '.codex/skills/eda-execute.md')),
+    err => err?.code === 'ENOENT'
+  );
+});
+
 test('askTargets defaults to both targets without an interactive terminal', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -466,7 +492,7 @@ test('askSettings returns default project settings without an interactive termin
       mode: 'automatic',
       steps: [
         { id: 'plan', skill: 'eda-plan', enabled: true, args: '' },
-        { id: 'execute', skill: 'eda-execute', enabled: true, args: '' },
+        { id: 'execute', skill: 'eda-plan-execute', enabled: true, args: '' },
         { id: 'polish', skill: 'eda-polish', enabled: true, args: 'limit 5' },
         {
           id: 'manual-test',
@@ -659,7 +685,7 @@ test('implementation workflow reads only applicable project references', async (
     'eda-explore',
     'eda-plan',
     'eda-plan-polish',
-    'eda-execute',
+    'eda-plan-execute',
     'eda-fix',
     'eda-fix-by-review',
     'eda-review'
@@ -749,7 +775,7 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   const content = await fs.readFile(skillPath('eda-orhestra'), 'utf8');
 
   assert.match(content, /name: eda-orhestra/);
-  assert.match(content, /`eda-plan` → `eda-execute` → `eda-polish` → `eda-manual-test`/);
+  assert.match(content, /`eda-plan` → `eda-plan-execute` → `eda-polish` → `eda-manual-test`/);
   assert.match(content, /Если `eda-manual-test` вернул `failed`/);
   assert.match(content, /Запусти `on_failure\.skill`/);
   assert.match(content, /выполни активные шаги из `on_failure\.then`/);
@@ -773,6 +799,7 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
   assert.match(content, /Каждый повтор шага и каждый `on_failure\.skill`/);
   assert.match(content, /blocked: недоступна изоляция этапа/);
+  assert.match(content, /старое значение `steps\[\]\.skill: eda-execute` нормализуй в памяти в `eda-plan-execute`/);
   assert.doesNotMatch(content, /оркестрируй в текущем верхнем контексте/);
   assert.doesNotMatch(content, /Коммитить, пушить, создавать PR или отправлять ревью\.[\s\S]*разрешено/);
 });
@@ -1274,26 +1301,42 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   assert.doesNotMatch(content, /eda-review-check/);
 });
 
-test('eda-execute forbids suppressing failing checks', async () => {
-  const content = await fs.readFile(skillPath('eda-execute'), 'utf8');
+test('eda-plan-execute forbids suppressing failing checks', async () => {
+  const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /Проверки нельзя подавлять/);
-  assert.match(content, /Пиши и правь код так, чтобы проверки проходили по сути/);
-  assert.match(content, /не добавляй игноры, исключения из проверок/);
+  assert.match(content, /Не поручай отключать линтеры, тесты, typecheck, static analysis/);
+  assert.match(content, /добавлять игноры или ослаблять команды и правила/);
   assert.match(content, /Запрещено делать проверки зелёными через подавление ошибок/);
-  assert.match(content, /Подавлять ошибки линтеров, тестов, typecheck или других проверок вместо исправления кода/);
+  assert.match(content, /Подавлять ошибки проверок, ослаблять правила или менять команды ради зелёного результата/);
 });
 
-test('eda-execute treats rules, architecture, and references as mandatory execution frame', async () => {
-  const content = await fs.readFile(skillPath('eda-execute'), 'utf8');
+test('eda-plan-execute treats rules, architecture, and references as mandatory execution frame', async () => {
+  const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /План и проектная документация — обязательная рамка исполнения/);
-  assert.match(content, /Прочитай карточки из `sources\.references`/);
+  assert.match(content, /карточки из `sources\.references`/);
   assert.match(content, /Приоритет: подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
-  assert.match(content, /Перед правкой сверяешь действие с `docs\/rules\.md`, `docs\/arch\.md` и применимыми карточками/);
-  assert.match(content, /необоснованного отклонения от примера/);
-  assert.match(content, /Исполнять план, который противоречит правилам или архитектуре проекта/);
-  assert.match(content, /Обходить правило или архитектурное ограничение без явного решения пользователя/);
+  assert.match(content, /шаги не конфликтуют с правилами, архитектурой и применимыми карточками/);
+  assert.match(content, /необоснованном отклонении от примера/);
+});
+
+test('eda-plan-execute delegates tasks, fixes, and checks while managing phased progress', async () => {
+  const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
+
+  assert.match(content, /Фазы выполняй строго последовательно/);
+  assert.match(content, /Безопасную параллельность используй обязательно/);
+  assert.match(content, /Запусти всех исполнителей волны одновременно одним batch/);
+  assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
+  assert.match(content, /Каждую задачу плана, подготовку ветки\/worktree, исправление после падения, проверку фазы и финальную проверку запускай новым субагентом/);
+  assert.match(content, /Основной агент пишет только этот журнал и отметки прогресса в плане/);
+  assert.match(content, /Самому менять код, тесты, миграции, конфиги, зависимости или проектную документацию/);
+  assert.match(content, /Самому запускать тесты, линтеры, typecheck, сборку, миграции, серверы/);
+  assert.match(content, /проверка фазы не прошла/);
+  assert.match(content, /нового субагента для полного набора тестов/);
+  assert.match(content, /blocked: недоступно изолированное выполнение/);
+  assert.match(content, /blocked: выполнение не сходится/);
+  assert.doesNotMatch(content, /codex exec/);
 });
 
 test('update renders platform skill copies from packaged sources', async () => {
