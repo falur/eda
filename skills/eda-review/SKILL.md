@@ -1,6 +1,6 @@
 ---
 name: eda-review
-description: 'Оркестрирует полное read-only ревью diff, ветки, PR/MR, коммита, папки или файла через отдельные packaged-агенты correctness, architecture, rules, references, plan alignment, code quality, tests, security, performance, frontend, API, database, documentation и previous reviews. Выбирает применимые проверки по конфигу, объединяет только подтверждённые проблемы, ставит оценку 0–100 и сохраняет итог в docs/reviews/. Не правит код и не запускает другой CLI.'
+description: 'Проводит полное read-only ревью diff, ветки, PR/MR, коммита, папки или файла и сохраняет итоговый отчёт.'
 ---
 
 # Скил: Ревьюер (eda-review)

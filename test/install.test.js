@@ -796,6 +796,16 @@ test('all packaged eda skills describe inline user-message input', async () => {
   }
 });
 
+test('all packaged eda skills keep trigger descriptions concise', async () => {
+  for (const file of await listSkillNames()) {
+    const content = await fs.readFile(skillPath(file), 'utf8');
+    const match = content.match(/^description: '([^\n]+)'$/m);
+
+    assert.ok(match, `${file} must contain a single-line quoted description`);
+    assert.ok(match[1].length <= 200, `${file} description must not exceed 200 characters`);
+  }
+});
+
 test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoints separate', async () => {
   const content = await fs.readFile(skillPath('eda-prepare-ai'), 'utf8');
 
