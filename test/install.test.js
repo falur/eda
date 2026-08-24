@@ -846,7 +846,15 @@ test('implementation workflow reads only applicable project references', async (
   for (const file of readers) {
     const content = await fs.readFile(skillPath(file), 'utf8');
     assert.match(content, /docs\/references\.md|sources\.references/, `${file} must discover project references`);
-    assert.match(content, /только (?:карточки|применимые карточки)|только применимые/, `${file} must load references selectively`);
+    if (file === 'eda-plan-execute') {
+      assert.match(
+        content,
+        /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, исполнитель читает эту карточку целиком перед соответствующим изменением/,
+        `${file} must load references as affected components require them`
+      );
+    } else {
+      assert.match(content, /только (?:карточки|применимые карточки)|только применимые/, `${file} must load references selectively`);
+    }
   }
 
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
@@ -1145,7 +1153,7 @@ test('eda-aim delegates agreement, execution, and independent verification', asy
   assert.match(verifierPrompt, /не запускай вложенных субагентов сам/);
 });
 
-test('eda-plan final format keeps risks, dependencies, and parallel execution inside phases', async () => {
+test('eda-plan final format keeps risks and dependencies inside cohesive single-agent phases', async () => {
   const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.doesNotMatch(content, /^## Риски$/m);
@@ -1153,10 +1161,10 @@ test('eda-plan final format keeps risks, dependencies, and parallel execution in
   assert.match(content, /Риски не выносятся в отдельный обязательный раздел/);
   assert.match(content, /основной поток задаётся номерами фаз, ID задач и их зависимостями/);
   assert.match(content, /Зависит от: `—`/);
-  assert.match(content, /Параллельно: `\[1\.2\]`/);
-  assert.match(content, /Маркировка должна быть симметричной/);
-  assert.match(content, /При конфликте или зависимости параллельность запрещена/);
-  assert.match(content, /небезопасную или упущенную параллельность/);
+  assert.match(content, /Одну фазу целиком выполняет один изолированный субагент/);
+  assert.match(content, /слишком крупную или несвязную фазу раздели/);
+  assert.match(content, /слишком крупные или несвязные фазы для одного исполнителя/);
+  assert.doesNotMatch(content, /Параллельно:/);
 });
 
 test('eda-plan keeps its fallback while eda-review requires native packaged subagents', async () => {
@@ -1505,28 +1513,32 @@ test('eda-plan-execute forbids suppressing failing checks', async () => {
 test('eda-plan-execute treats rules, architecture, and references as mandatory execution frame', async () => {
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
-  assert.match(content, /План и проектная документация — обязательная рамка исполнения/);
-  assert.match(content, /карточки из `sources\.references`/);
+  assert.match(content, /Рамку читает исполнитель фазы/);
+  assert.match(content, /Каждый исполнитель целиком читает план, `docs\/rules\.md`, `docs\/arch\.md` и индекс `docs\/references\.md`/);
+  assert.match(content, /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, исполнитель читает эту карточку целиком перед соответствующим изменением/);
   assert.match(content, /Приоритет: подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
-  assert.match(content, /шаги не конфликтуют с правилами, архитектурой и применимыми карточками/);
   assert.match(content, /необоснованном отклонении от примера/);
 });
 
-test('eda-plan-execute delegates tasks, fixes, and checks while managing phased progress', async () => {
+test('eda-plan-execute delegates whole phases, fixes, and checks while managing progress', async () => {
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /Фазы выполняй строго последовательно/);
-  assert.match(content, /Безопасную параллельность используй обязательно/);
-  assert.match(content, /Запусти всех исполнителей волны одновременно одним batch/);
+  assert.match(content, /Одна фаза — один исполнитель/);
+  assert.match(content, /Запускай каждую фазу целиком в новом субагенте/);
   assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
-  assert.match(content, /Каждую задачу плана, подготовку ветки\/worktree, исправление после падения, проверку фазы и финальную проверку запускай новым субагентом/);
+  assert.match(content, /Запусти одного нового изолированного исполнителя и сохрани его идентификатор как исполнителя этой фазы/);
+  assert.match(content, /продолжи того же исполнителя фазы/);
+  assert.match(content, /нового изолированного субагента-проверяющего/);
   assert.match(content, /Основной агент пишет только этот журнал и отметки прогресса в плане/);
   assert.match(content, /Самому менять код, тесты, миграции, конфиги, зависимости или проектную документацию/);
   assert.match(content, /Самому запускать тесты, линтеры, typecheck, сборку, миграции, серверы/);
-  assert.match(content, /проверка фазы не прошла/);
+  assert.match(content, /следующую фазу, пока исполнитель текущей не завершил все её задачи и отдельная проверка фазы не прошла/);
   assert.match(content, /нового субагента для полного набора тестов/);
   assert.match(content, /blocked: недоступно изолированное выполнение/);
   assert.match(content, /blocked: выполнение не сходится/);
+  assert.doesNotMatch(content, /Выполнять фазы волнами/);
+  assert.doesNotMatch(content, /Запусти всех исполнителей волны/);
   assert.doesNotMatch(content, /codex exec/);
 });
 
