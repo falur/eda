@@ -814,6 +814,9 @@ test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoint
   assert.match(content, /если явно назвал одну карточку — обнови только её и соответствующую строку/);
   assert.match(content, /В файле должны быть только действующие правила проекта/);
   assert.match(content, /не вводи числовой лимит/);
+  assert.match(content, /Архитектурное решение не становится правилом только потому, что его удалось сформулировать как запрет/);
+  assert.match(content, /Если утверждение определяет, \*\*где\*\* находится ответственность/);
+  assert.match(content, /Транзакции.*Persistence.*Типы.*CQRS.*Безопасность/s);
   assert.match(content, /дерево основных папок/);
   assert.match(content, /выбранный архитектурный подход/);
   assert.match(content, /явно отдели её от текущего состояния/);
@@ -838,6 +841,7 @@ test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoint
   assert.match(content, /без `continue-on-error`/);
   assert.match(content, /не выдавай её за подтверждённо работающую/);
   assert.match(content, /Для нового проекта без реального кода не выдумывай эталоны/);
+  assert.match(content, /Целевая архитектура, выбранный стек, документация фреймворка, пожелание пользователя или единичный черновой пример сами по себе не доказывают устоявшуюся форму/);
   assert.doesNotMatch(content, /и шапку `AGENTS\.md`/);
   assert.doesNotMatch(content, /5–12 правил/);
 });
