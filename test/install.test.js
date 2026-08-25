@@ -8,7 +8,15 @@ import test from 'node:test';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { askReviewAgentSettings, askSettings, askTargets, init, update, updateAll } from '../lib/install.js';
+import {
+  askReviewAgentSettings,
+  askSettings,
+  askTargets,
+  askUpdateAllSettingsMode,
+  init,
+  update,
+  updateAll
+} from '../lib/install.js';
 import { renderClaudeSkill } from '../lib/renderers/claude-skill.js';
 
 const execFileAsync = promisify(execFile);
@@ -97,7 +105,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '1.0.4');
+    assert.equal(manifest.packageVersion, '1.0.5');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -291,7 +299,7 @@ test('updateAll writes one shared settings file to every updated project', async
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
-  const result = await updateAll({ root, output });
+  const result = await updateAll({ root, output, settingsMode: 'configure' });
 
   assert.equal(result.updatedProjects.length, 2);
   assert.deepEqual(
@@ -328,6 +336,37 @@ test('updateAll writes one shared settings file to every updated project', async
     err => err?.code === 'ENOENT'
   );
   assert.equal(await fs.readFile(path.join(depthThreeProject, '.codex/skills/eda-plan.md'), 'utf8'), 'too deep');
+});
+
+test('updateAll skip preserves existing settings and creates defaults only when missing', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-settings-skip-'));
+  const existingProject = path.join(root, 'existing');
+  const missingProject = path.join(root, 'missing');
+  const existingSettingsPath = path.join(existingProject, 'docs/settings.yaml');
+  const existingSettings = 'version: 2\ncustom: keep-byte-for-byte\n';
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+
+  for (const project of [existingProject, missingProject]) {
+    await fs.mkdir(path.join(project, '.codex/skills/eda-plan'), { recursive: true });
+    await fs.writeFile(path.join(project, '.codex/skills/eda-plan/SKILL.md'), 'old plan');
+  }
+  await fs.mkdir(path.dirname(existingSettingsPath), { recursive: true });
+  await fs.writeFile(existingSettingsPath, existingSettings);
+
+  const result = await updateAll({ root, output, settingsMode: 'skip' });
+
+  assert.equal(result.settingsMode, 'skip');
+  assert.equal(await fs.readFile(existingSettingsPath, 'utf8'), existingSettings);
+  const createdSettings = await fs.readFile(path.join(missingProject, 'docs/settings.yaml'), 'utf8');
+  assert.match(createdSettings, /^version: 2$/m);
+  assert.match(createdSettings, /^orhestra:/m);
+  assert.match(createdSettings, /^review:/m);
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.equal(stdout.match(/Существующий файл настроек сохранён: docs\/settings\.yaml/g)?.length, 1);
+  assert.equal(stdout.match(/Создан файл настроек с defaults: docs\/settings\.yaml/g)?.length, 1);
+  assert.doesNotMatch(stdout, /Какие настройки включить|Настройки будут запрошены/);
 });
 
 test('cli update-all updates projects from provided directory', async () => {
@@ -551,6 +590,34 @@ test('askTargets defaults to both targets without an interactive terminal', asyn
   assert.deepEqual(targets, ['claude', 'codex']);
 });
 
+test('askUpdateAllSettingsMode offers configure and skip', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+
+  const mode = await askUpdateAllSettingsMode({
+    input,
+    output,
+    selectPrompt: async prompt => {
+      assert.equal(prompt.message, 'Как обновить docs/settings.yaml в найденных проектах?');
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['configure', 'skip']);
+      return 'skip';
+    }
+  });
+
+  assert.equal(mode, 'skip');
+});
+
+test('askUpdateAllSettingsMode defaults to skip without an interactive terminal', async () => {
+  const mode = await askUpdateAllSettingsMode({
+    input: new PassThrough(),
+    output: silentOutput()
+  });
+
+  assert.equal(mode, 'skip');
+});
+
 test('askSettings returns default project settings without an interactive terminal', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -623,6 +690,30 @@ test('askSettings returns default project settings without an interactive termin
     documentation: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     previous_reviews: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } }
   });
+});
+
+test('askSettings asks only for requested sections', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+  const messages = [];
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['aim'],
+    checkboxPrompt: async () => {
+      throw new Error('checkbox must not be called for aim-only settings');
+    },
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      return 'manual';
+    }
+  });
+
+  assert.deepEqual(messages, ['Как eda-aim должен отвечать на рабочие вопросы по умолчанию?']);
+  assert.equal(settings.aim.mode, 'manual');
 });
 
 test('interactive review settings ask mode and per-platform models for enabled checks', async () => {
@@ -761,7 +852,7 @@ test('init preserves settings with an unknown version', async () => {
   );
 });
 
-test('update rebuilds and overwrites existing settings', async () => {
+test('update preserves a complete version 2 settings file byte for byte', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-update-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
   const output = new PassThrough();
@@ -769,18 +860,60 @@ test('update rebuilds and overwrites existing settings', async () => {
   output.on('data', chunk => outputChunks.push(chunk));
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.writeFile(settingsPath, 'version: 2\ncustom: true\n');
+  const original = `version: 2
+
+orhestra: { custom: keep }
+aim: { custom: keep }
+explore: { custom: keep }
+plan: { custom: keep }
+plan-polish: { custom: keep }
+review: { custom: keep }
+send-review: { custom: keep }
+discover-automations: { custom: keep }
+custom: true
+`;
+  await fs.writeFile(settingsPath, original);
+
+  await update({ cwd, output });
+
+  assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Настройки docs\/settings\.yaml версии 2 полные — вопросы не требуются\./);
+  assert.doesNotMatch(stdout, /Нет интерактивного терминала/);
+});
+
+test('update appends only missing version 2 settings sections', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-update-partial-'));
+  const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  const original = `version: 2
+
+orhestra: { custom: keep }
+explore: { custom: keep }
+plan: { custom: keep }
+plan-polish: { custom: keep }
+review: { custom: keep }
+send-review: { custom: keep }
+discover-automations: { custom: keep }
+custom: true
+`;
+  await fs.writeFile(settingsPath, original);
 
   await update({ cwd, output });
 
   const settings = await fs.readFile(settingsPath, 'utf8');
-  assert.match(settings, /^version: 2$/m);
-  assert.match(settings, /^orhestra:/m);
-  assert.match(settings, /^review:\n(?:.*\n)*?  agents:/m);
-  assert.doesNotMatch(settings, /^custom:/m);
+  assert.ok(settings.startsWith(original));
+  assert.equal(settings.match(/^aim:$/gm)?.length, 1);
+  assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
+  assert.equal(settings.match(/^orhestra:/gm)?.length, 1);
+  assert.match(settings, /^custom: true$/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, /Настраиваю docs\/settings\.yaml заново\./);
-  assert.match(stdout, /Записан файл настроек: docs\/settings\.yaml/);
+  assert.match(stdout, /Дополняю отсутствующие разделы docs\/settings\.yaml: aim\./);
+  assert.match(stdout, /Добавлены разделы docs\/settings\.yaml: aim\./);
 });
 
 test('all packaged eda skills describe inline user-message input', async () => {
