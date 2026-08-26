@@ -1474,14 +1474,26 @@ test('eda-plan final format keeps risks and dependencies inside cohesive single-
   assert.doesNotMatch(content, /Параллельно:/);
 });
 
-test('eda-plan delegates plan review and fix while review workflows require native packaged subagents', async () => {
+test('eda-plan writes concrete text without padding', async () => {
+  const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
+
+  assert.match(content, /Пиши конкретно и без воды/);
+  assert.match(content, /Если её удаление ничего из этого не меняет, удали её из плана/);
+  assert.match(content, /конкретика не равна максимальной подробности/);
+  assert.match(content, /не повторять один контракт в нескольких разделах/);
+  assert.match(content, /не выдумывать пути, символы или API ради видимости конкретики/);
+  assert.match(content, /нет общих призывов, повторов и пояснений/);
+});
+
+test('eda-plan delegates the complete plan-polish cycle while review workflows require native packaged subagents', async () => {
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
 
-  assert.match(plan, /Запусти один `eda-plan-review`/);
-  assert.match(plan, /запусти ровно один новый изолированный субагент/);
-  assert.match(plan, /Не запускай второй review внутри `eda-plan`/);
+  assert.match(plan, /Запусти один `eda-plan-polish`/);
+  assert.match(plan, /запусти `eda-plan-polish` в отдельном изолированном субагенте/);
+  assert.match(plan, /Основной планировщик не делает review или fix/);
   assert.match(plan, /При недоступности нативных субагентов остановись; не используй CLI-fallback/);
+  assert.doesNotMatch(plan, /apply-optional/);
 
   assert.match(review, /В Codex запускай установленный custom agent через `spawn_agent` или аналог/);
   assert.match(review, /нативные субагенты недоступны, остановись/);
@@ -1492,13 +1504,15 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
   const content = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
 
   assert.match(content, /name: eda-plan-polish/);
-  assert.match(content, /`eda-plan-review` → `eda-plan-review-fix apply-optional` → повторный `eda-plan-review`/);
+  assert.match(content, /`eda-plan-review` → `eda-plan-review-fix` → повторный `eda-plan-review`/);
   assert.match(content, /plan-review\.threshold.*default `95`/);
   assert.match(content, /plan-polish\.limit.*default `3`/);
   assert.match(content, /Если это последняя разрешённая review-итерация.*fix не запускай/);
-  assert.match(content, /не изменились open\/resolved\/regressed\/waived ID и score/);
+  assert.match(content, /не изменились open\/resolved\/regressed ID и score/);
   assert.match(content, /один подтверждённый круг без прогресса уже останавливает цикл/);
   assert.match(content, /Score не повышай и не пересчитывай сам/);
+  assert.match(content, /Примени все открытые findings минимальным изменением плана/);
+  assert.doesNotMatch(content, /apply-optional|required findings|optional|waived/i);
   assert.match(content, /Запускать кросс-CLI, `strict`, `codex exec` или `claude -p`/);
   assert.match(content, /менять код или запускать проверки проекта/);
 });
@@ -1584,7 +1598,33 @@ test('eda-plan-review roles live in read-only packaged agents with structured co
     assert.match(prompt, /status: completed \| not_applicable \| blocked/);
     assert.match(prompt, /prior_findings:/);
     assert.match(prompt, /не выставляй score/i);
+    assert.doesNotMatch(prompt, /recommendation: required \| optional/);
+    assert.doesNotMatch(prompt, /apply-optional/);
+    if (role === 'previous') {
+      assert.match(prompt, /resolved \| still_open \| regressed/);
+      assert.doesNotMatch(prompt, /waived/);
+    } else {
+      assert.match(prompt, /обязательно нужно исправить|Проверь конкретность и плотность плана/);
+      assert.match(prompt, /можно безопасно проигнорировать|Не проси расширять текст/);
+    }
   }
+});
+
+test('eda-plan-review keeps one mandatory finding class and a score gate', async () => {
+  const review = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
+  const fix = await fs.readFile(skillPath('eda-plan-review-fix'), 'utf8');
+
+  assert.match(review, /Если замечание можно без последствий не применять, это не finding/);
+  assert.match(review, /Недостаток конкретики подтверждён только когда исполнителю придётся заново исследовать область/);
+  assert.match(review, /Вода или повтор подтверждены/);
+  assert.match(review, /Любой открытый finding даёт `changes-required`, независимо от score/);
+  assert.match(review, /при отсутствии открытых findings score равен `100`/);
+  assert.doesNotMatch(review, /Recommendation|required\/optional|Optional open|Required open|waived/);
+
+  assert.match(fix, /Каждый finding в итоговом review требует исправления/);
+  assert.match(fix, /Примени все открытые findings одним связным минимальным изменением плана/);
+  assert.match(fix, /Сначала удаляй лишнее или заменяй существующую формулировку/);
+  assert.doesNotMatch(fix, /apply-optional|required findings|all required|optional|waived/i);
 });
 
 test('eda-review-business checks applicable business rules without replacing task intent', async () => {

@@ -6,7 +6,7 @@
 
 Получи рабочую директорию, `PLAN_FILE`, `PLAN_SHA256`, `PREVIOUS_REVIEW`, `PREVIOUS_FIX`, `MODEL` и `PLAN_CONTEXT`. Если связанной цепочки нет, верни `not_applicable`. Проверь SHA-256 и каждый прежний ID по текущему плану.
 
-Для каждого ID верни `resolved`, `still_open`, `regressed` или `waived`. Сохраняй `waived`, если нет новых доказательств; не переоткрывай отклонённое предложение только из-за иной формулировки. Новые проблемы не ищи — их проверяют доменные агенты. Не правь файлы.
+Для каждого ID верни `resolved`, `still_open` или `regressed`. Не переоткрывай отклонённое предложение только из-за иной формулировки. Новые проблемы не ищи — их проверяют доменные агенты. Не правь файлы.
 
 ## Результат
 
@@ -20,7 +20,7 @@ summary: <краткий итог>
 findings: []
 prior_findings:
   - id: PR-001
-    status: resolved | still_open | regressed | waived
+    status: resolved | still_open | regressed
     evidence: <конкретное подтверждение в текущем плане>
 question: <несовпадение цепочки или null>
 ```

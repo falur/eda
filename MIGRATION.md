@@ -25,9 +25,9 @@ eda update-all /path/to/projects
 - Добавлены `eda-plan-review` и `eda-plan-review-fix`.
 - Добавлены 12 read-only агентов `eda-plan-review-*` с отдельными зонами ответственности.
 - `eda-plan-polish` теперь оркестрирует review/fix и по умолчанию ограничен тремя подтверждающими review-итерациями.
-- Готовность требует одновременно отсутствия required findings и достижения threshold.
-- Findings связаны стабильными ID и SHA-256 плана; waived optional не переоткрываются без новых доказательств.
-- `eda-plan` по `plan.review: true` выполняет один review и при необходимости один fix.
+- Готовность требует одновременно отсутствия открытых findings и достижения threshold; любой finding блокирует `ready` независимо от score.
+- У findings нет деления на required/optional: ревью сохраняет только доказанные ошибки и существенные неточности, которые обязательно исправить. ID и SHA-256 цепочка остаются стабильными.
+- `eda-plan-review-fix` применяет все findings минимальным изменением плана, а `eda-plan` по `plan.review: true` запускает полный подтверждающий цикл `eda-plan-polish`.
 - `eda-plan-polish strict` и `plan-polish.strict` удалены. `plan.strict` для кросс-CLI проверки самого `eda-plan` остаётся.
 - npm-пакет использует `yaml` для безопасного переноса вложенного конфига.
 
