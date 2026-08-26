@@ -1016,6 +1016,20 @@ test('all packaged eda skills keep trigger descriptions concise', async () => {
   }
 });
 
+test('packaged review contracts use the Russian term находки', async () => {
+  for (const entry of await fs.readdir(SKILLS_SRC, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('eda-')) continue;
+    const content = await fs.readFile(path.join(SKILLS_SRC, entry.name, 'SKILL.md'), 'utf8');
+    assert.doesNotMatch(content, /\x66\x69\x6e\x64\x69\x6e\x67\x73?/i, `${entry.name}: используй термин «находка»`);
+  }
+
+  for (const entry of await fs.readdir(AGENTS_SRC, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('eda-')) continue;
+    const prompt = await fs.readFile(path.join(AGENTS_SRC, entry.name, 'prompt.md'), 'utf8');
+    assert.doesNotMatch(prompt, /\x66\x69\x6e\x64\x69\x6e\x67\x73?/i, `${entry.name}: используй термин «находка»`);
+  }
+});
+
 test('eda-business creates only confirmed business cards and a simple index', async () => {
   const content = await fs.readFile(skillPath('eda-business'), 'utf8');
 
@@ -1356,6 +1370,18 @@ test('eda-review keeps technical details below a readable problem summary', asyn
   assert.match(content, /Что подтверждает проблему/);
 });
 
+test('eda-review сохраняет только конкретные находки, требующие исправления', async () => {
+  const content = await fs.readFile(skillPath('eda-review'), 'utf8');
+
+  assert.match(content, /Каждая находка означает дефект, который обязательно исправить/);
+  assert.match(content, /Косметические улучшения, вкусовой рефакторинг, спекулятивное усиление/);
+  assert.match(content, /result: <clean \| changes-required>/);
+  assert.match(content, /если находок нет, score равен `100`/);
+  assert.match(content, /при любой находке используй `result: changes-required` независимо от score/);
+  assert.doesNotMatch(content, /recommendation: required \| optional/);
+  assert.doesNotMatch(content, /На усмотрение автора/);
+});
+
 test('eda-plan no longer requires a research selection question by default', async () => {
   const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
@@ -1511,8 +1537,8 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
   assert.match(content, /не изменились open\/resolved\/regressed ID и score/);
   assert.match(content, /один подтверждённый круг без прогресса уже останавливает цикл/);
   assert.match(content, /Score не повышай и не пересчитывай сам/);
-  assert.match(content, /Примени все открытые findings минимальным изменением плана/);
-  assert.doesNotMatch(content, /apply-optional|required findings|optional|waived/i);
+  assert.match(content, /Примени все открытые находки минимальным изменением плана/);
+  assert.doesNotMatch(content, /apply-optional|required находки|optional|waived/i);
   assert.match(content, /Запускать кросс-CLI, `strict`, `codex exec` или `claude -p`/);
   assert.match(content, /менять код или запускать проверки проекта/);
 });
@@ -1563,8 +1589,10 @@ test('eda-review roles live in packaged agents with structured contracts', async
     assert.equal(config.access, 'read-only');
     assert.match(prompt, /Верни один YAML-блок/);
     assert.match(prompt, /status: completed \| not_applicable \| blocked|status: completed \| not_applicable \| blocked \| unavailable/);
-    assert.match(prompt, /findings:/);
+    assert.match(prompt, /находки:/);
     assert.match(prompt, /evidence:/);
+    assert.match(prompt, /Добавляй находку только для конкретной доказанной проблемы, которую обязательно исправить/);
+    assert.doesNotMatch(prompt, /recommendation:/);
   }
 
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
@@ -1596,7 +1624,7 @@ test('eda-plan-review roles live in read-only packaged agents with structured co
     assert.equal(config.access, 'read-only');
     assert.match(prompt, /Верни один YAML-блок/);
     assert.match(prompt, /status: completed \| not_applicable \| blocked/);
-    assert.match(prompt, /prior_findings:/);
+    assert.match(prompt, /предыдущие_находки:/);
     assert.match(prompt, /не выставляй score/i);
     assert.doesNotMatch(prompt, /recommendation: required \| optional/);
     assert.doesNotMatch(prompt, /apply-optional/);
@@ -1610,21 +1638,21 @@ test('eda-plan-review roles live in read-only packaged agents with structured co
   }
 });
 
-test('eda-plan-review keeps one mandatory finding class and a score gate', async () => {
+test('eda-plan-review использует один обязательный класс находок и score gate', async () => {
   const review = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
   const fix = await fs.readFile(skillPath('eda-plan-review-fix'), 'utf8');
 
-  assert.match(review, /Если замечание можно без последствий не применять, это не finding/);
+  assert.match(review, /Если замечание можно без последствий не применять, это не находка/);
   assert.match(review, /Недостаток конкретики подтверждён только когда исполнителю придётся заново исследовать область/);
   assert.match(review, /Вода или повтор подтверждены/);
-  assert.match(review, /Любой открытый finding даёт `changes-required`, независимо от score/);
-  assert.match(review, /при отсутствии открытых findings score равен `100`/);
+  assert.match(review, /Любая открытая находка даёт `changes-required`, независимо от score/);
+  assert.match(review, /при отсутствии открытых находок score равен `100`/);
   assert.doesNotMatch(review, /Recommendation|required\/optional|Optional open|Required open|waived/);
 
-  assert.match(fix, /Каждый finding в итоговом review требует исправления/);
-  assert.match(fix, /Примени все открытые findings одним связным минимальным изменением плана/);
+  assert.match(fix, /Каждая находка в итоговом review требует исправления/);
+  assert.match(fix, /Примени все открытые находки одним связным минимальным изменением плана/);
   assert.match(fix, /Сначала удаляй лишнее или заменяй существующую формулировку/);
-  assert.doesNotMatch(fix, /apply-optional|required findings|all required|optional|waived/i);
+  assert.doesNotMatch(fix, /apply-optional|required находки|all required|optional|waived/i);
 });
 
 test('eda-review-business checks applicable business rules without replacing task intent', async () => {
@@ -1843,14 +1871,14 @@ test('eda-fix-by-review supports inline review text without a review file', asyn
   assert.match(content, /Короткое сообщение: путь к ревью или «источник: текст из сообщения»/);
 });
 
-test('eda-fix-by-review supports apply-optional mode for orchestrated polishing', async () => {
+test('eda-fix-by-review применяет каждую находку без optional-режима', async () => {
   const content = await fs.readFile(skillPath('eda-fix-by-review'), 'utf8');
 
-  assert.match(content, /Режим `apply-optional`/);
-  assert.match(content, /сам принимаешь решение без вопроса/);
-  assert.match(content, /не «механически применить все optional»/);
-  assert.match(content, /Отклонённые optional-решения/);
-  assert.match(content, /кроме явного режима `apply-optional`/);
+  assert.match(content, /одна группа находок: каждый пункт обязательно исправить/);
+  assert.match(content, /Применяй все выбранные находки/);
+  assert.match(content, /Задавай вопрос только если находка неоднозначна/);
+  assert.match(content, /Для старого формата возьми только пункты из `Править обязательно`/);
+  assert.doesNotMatch(content, /apply-optional/);
 });
 
 test('eda-manual-test documents manual API and frontend smoke checks', async () => {
@@ -1881,12 +1909,13 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   assert.match(content, /Порог по умолчанию — `95`/);
   assert.match(content, /лимит — `5` итераций/);
   assert.match(content, /полное `eda-review`/);
-  assert.match(content, /eda-fix-by-review apply-optional/);
-  assert.match(content, /Все пункты «править обязательно» исправь/);
-  assert.match(content, /сам решает, применять ли его/);
-  assert.match(content, /чтобы следующие ревьюеры не повторяли/);
+  assert.match(content, /`eda-review` → `eda-fix-by-review` → повторное `eda-review`/);
+  assert.match(content, /`result: clean`, ноль находок и `score >= threshold`/);
+  assert.match(content, /Любая находка обязательно исправляется независимо от score/);
+  assert.match(content, /набор находок не изменился/);
   assert.match(content, /изолированным субагентом/);
   assert.match(content, /reviewed-with-warnings/);
+  assert.doesNotMatch(content, /apply-optional/);
   assert.doesNotMatch(content, /eda-review-check/);
 });
 

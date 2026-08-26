@@ -27,7 +27,7 @@ description: 'Оркестрирует review и исправления гото
 
 1. Каждый вызов `eda-plan-review` и `eda-plan-review-fix` запускай отдельным изолированным субагентом с чистым контекстом.
 2. Если нативные субагенты или вложенная делегация недоступны, остановись; не выполняй review/fix основным агентом и не используй CLI-fallback.
-3. Успех определяется только review со статусом `ready`, без открытых findings и `score >= threshold`.
+3. Успех определяется только review со статусом `ready`, без открытых находок и `score >= threshold`.
 4. Limit считает подтверждающие review-итерации. После review на последней итерации не запускай fix, который нельзя перепроверить.
 5. Основной агент не делает содержательных правок плана. После ready он может обновить только front matter: `status`, `plan_review`, `plan_review_fix`.
 6. Не запускай проверки проекта и не коммить.
@@ -42,7 +42,7 @@ description: 'Оркестрирует review и исправления гото
 
 ## Цикл
 
-Сформируй `$PLAN_FILE`, `$THRESHOLD`, `$LIMIT` и внутренний журнал: iteration, review path, plan SHA-256, score, состояния findings, fix path и причина продолжения.
+Сформируй `$PLAN_FILE`, `$THRESHOLD`, `$LIMIT` и внутренний журнал: iteration, review path, plan SHA-256, score, состояния находок, fix path и причина продолжения.
 
 Для `$ITERATION` от `1` до `$LIMIT`:
 
@@ -56,16 +56,16 @@ description: 'Оркестрирует review и исправления гото
    Верни путь, status, plan_sha256, score, открытые ID и coverage.
    ```
 
-2. Прочитай review-артефакт и проверь, что status/score/threshold/findings согласованы.
+2. Прочитай review-артефакт и проверь, что status/score/threshold/находки согласованы.
 3. Если status `ready`, обнови front matter плана: `status: reviewed`, `plan_review: <REVIEW_FILE>`, `plan_review_fix: <последний FIX_FILE | none>`. Заверши успешно.
 4. Если это последняя разрешённая review-итерация, остановись `достигнут limit`; fix не запускай.
 5. Если относительно предыдущего review не изменились open/resolved/regressed ID и score, остановись `blocked: review не показывает прогресса`.
-6. Если status `changes-required`, но открытых findings нет, остановись `blocked: review нарушает контракт gate`; score ниже threshold нельзя исправлять без конкретных findings.
+6. Если status `changes-required`, но открытых находок нет, остановись `blocked: review нарушает контракт gate`; score ниже threshold нельзя исправлять без конкретных находок.
 7. Запусти новый изолированный субагент:
 
    ```text
    Используй eda-plan-review-fix для <REVIEW_FILE>.
-   Примени все открытые findings минимальным изменением плана.
+   Примени все открытые находки минимальным изменением плана.
    Верни путь к fix, before_sha256, after_sha256 и applied ID.
    ```
 
@@ -76,7 +76,7 @@ Score не повышай и не пересчитывай сам: исполь�
 
 ## Финал
 
-Сообщи результат (`ready`, limit, no progress, invalid gate или blocked), план, последний review/fix, score/threshold, число review-итераций, open ID и coverage warnings. При ready предложи `eda-plan-execute`; при неуспехе перечисли конкретные оставшиеся findings.
+Сообщи результат (`ready`, limit, no progress, invalid gate или blocked), план, последний review/fix, score/threshold, число review-итераций, open ID и coverage warnings. При ready предложи `eda-plan-execute`; при неуспехе перечисли конкретные оставшиеся находки.
 
 ## Чего НЕ делать
 

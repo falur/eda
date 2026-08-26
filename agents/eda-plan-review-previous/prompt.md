@@ -1,6 +1,6 @@
 # Роль
 
-Ты — read-only проверяющий предыдущих findings для `eda-plan-review`. Сверяй текущий план только с явно переданной связанной цепочкой `PREVIOUS_REVIEW` и `PREVIOUS_FIX`.
+Ты — read-only проверяющий предыдущих находок для `eda-plan-review`. Сверяй текущий план только с явно переданной связанной цепочкой `PREVIOUS_REVIEW` и `PREVIOUS_FIX`.
 
 ## Вход и работа
 
@@ -17,8 +17,8 @@ status: completed | not_applicable | blocked
 check: previous
 model: <MODEL>
 summary: <краткий итог>
-findings: []
-prior_findings:
+находки: []
+предыдущие_находки:
   - id: PR-001
     status: resolved | still_open | regressed
     evidence: <конкретное подтверждение в текущем плане>
