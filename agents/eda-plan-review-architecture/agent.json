@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-plan-review-architecture",
+  "description": "Проверяет архитектурные границы, зависимости и соответствие плана docs/arch.md.",
+  "models": { "claude": "opus", "codex": "gpt-5.6-sol" },
+  "reasoning": { "claude": "high", "codex": "high" },
+  "access": "read-only",
+  "maxTurns": 30
+}

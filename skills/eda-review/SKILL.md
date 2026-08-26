@@ -17,7 +17,7 @@ description: 'Проводит полное read-only ревью diff, ветк�
 
 ## Настройки
 
-Прочитай `docs/settings.yaml`, если файл есть. Поддерживается только `version: 2`. Используй `review.agents.<check>.mode` и `review.agents.<check>.model.<platform>`. Если файла нет или версия отличается, используй defaults и добавь предупреждение; настройки v1 не применяй.
+Прочитай `docs/settings.yaml`, если файл есть. Поддерживается только `version: 3`. Используй `review.agents.<check>.mode` и `review.agents.<check>.model.<platform>`. Если файла нет или версия отличается, используй defaults и добавь предупреждение; старые настройки не применяй.
 
 Допустимые режимы:
 
@@ -27,7 +27,7 @@ description: 'Проводит полное read-only ревью diff, ветк�
 
 Допустимые модели по умолчанию: Claude Code — `haiku`, `sonnet`, `opus`; Codex — `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`. Неизвестное или отсутствующее значение замени default-значением конкретного агента и добавь предупреждение в покрытие.
 
-Если `version: 2` существует, но раздела `review.agents` нет, используй defaults ниже. Устаревшие поля `review.strict`, `review.include_code_quality` и раздел `review-check` не применяй; добавь предупреждение с просьбой перенести настройки вручную. Существующий файл настроек не переписывай.
+Если `version: 3` существует, но раздела `review.agents` нет, используй defaults ниже и добавь предупреждение. Устаревшие поля `review.strict`, `review.include_code_quality` и раздел `review-check` не применяй. Существующий файл настроек не переписывай.
 
 | Проверка | Default mode | Claude | Codex |
 |---|---|---|---|

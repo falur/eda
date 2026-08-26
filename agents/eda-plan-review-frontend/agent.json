@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-plan-review-frontend",
+  "description": "Проверяет пользовательские сценарии, состояния UI, accessibility и адаптивность в плане.",
+  "models": { "claude": "sonnet", "codex": "gpt-5.6-terra" },
+  "reasoning": { "claude": "medium", "codex": "medium" },
+  "access": "read-only",
+  "maxTurns": 30
+}

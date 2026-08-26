@@ -1,119 +1,97 @@
-# Миграция на eda 1.0
+# Миграция на eda 2.0
 
-Версия 1.0 переводит `eda` с набора файлов-скилов на пакет с каноническими скилами и специализированными агентами для Claude Code и Codex CLI. `eda update` сохраняет полный `docs/settings.yaml` версии 2 без вопросов, а в неполном v2 спрашивает и атомарно дописывает только отсутствующие разделы перед обновлением компонентов.
+Версия 2.0 заменяет широкие итерации проверки планов специализированным workflow `eda-plan-review` → `eda-plan-review-fix` и переводит `docs/settings.yaml` на `version: 3`.
 
-## Короткий путь
-
-Обнови глобальный пакет:
+## Обновление
 
 ```bash
-npm install -g @gian-tiaga/eda@1
+npm install -g @gian-tiaga/eda@2
 eda --version
-```
-
-Команда должна вывести актуальную версию ветки `1.0.x`.
-
-В одном проекте выполни:
-
-```bash
-cd /path/to/project
 eda update
 ```
 
-Для нескольких проектов внутри одной директории можно выполнить:
+Версия CLI должна начинаться с `2.0`. После обновления перезапусти Claude Code или Codex CLI, чтобы среда перечитала новые скилы и агентов.
+
+Для нескольких проектов:
 
 ```bash
 eda update-all /path/to/projects
 ```
 
-`update-all` ищет проекты на глубине до двух уровней и предлагает два режима. `configure` один раз спрашивает полный профиль и записывает одинаковый `docs/settings.yaml` версии 2 во все найденные проекты. `skip` не задаёт вопросов, сохраняет существующие конфиги и создаёт профиль defaults только в проектах без файла. В non-TTY запуске используется `skip`.
+`configure` один раз спрашивает общий профиль v3 и записывает его во все проекты. `skip` сохраняет полный v3, но старые, неизвестные и неполные конфиги индивидуально переносит; отсутствующие значения получает из defaults. В non-TTY используется `skip`.
 
-После обновления перезапусти Claude Code или Codex CLI, чтобы среда перечитала установленные скилы и агентов.
+## Что изменилось
 
-## Что обновится автоматически
+- Добавлены `eda-plan-review` и `eda-plan-review-fix`.
+- Добавлены 12 read-only агентов `eda-plan-review-*` с отдельными зонами ответственности.
+- `eda-plan-polish` теперь оркестрирует review/fix и по умолчанию ограничен тремя подтверждающими review-итерациями.
+- Готовность требует одновременно отсутствия required findings и достижения threshold.
+- Findings связаны стабильными ID и SHA-256 плана; waived optional не переоткрываются без новых доказательств.
+- `eda-plan` по `plan.review: true` выполняет один review и при необходимости один fix.
+- `eda-plan-polish strict` и `plan-polish.strict` удалены. `plan.strict` для кросс-CLI проверки самого `eda-plan` остаётся.
+- npm-пакет использует `yaml` для безопасного переноса вложенного конфига.
 
-- Скилы будут синхронизированы в `.claude/skills/<skill>/SKILL.md` и `.codex/skills/<skill>/SKILL.md`.
-- Старые управляемые Codex-файлы `.codex/skills/<skill>.md` будут удалены после установки соответствующего скила в новом формате.
-- Установятся пакетные агенты в `.claude/agents/` и `.codex/agents/`.
-- Retired-компоненты будут удалены только там, где ими владеет `eda`; чужие скилы и агенты установщик не удаляет.
-- Корневые `AGENTS.md` и `CLAUDE.md` проекта установщик не создаёт и не перезаписывает.
+## Умный перенос settings v3
 
-Локальные изменения внутри управляемых `.claude/skills/eda-*`, `.codex/skills/eda-*`, `.claude/agents/eda-*` и `.codex/agents/eda-*` будут заменены. Если такие изменения нужны, сохрани их отдельно до запуска `eda update`.
+Установщик разбирает старый файл как YAML, переносит валидные известные значения и спрашивает только отсутствующие в интерактивном терминале. После этого файл целиком атомарно записывается в нормализованном формате v3. Без TTY недостающие значения заменяются defaults.
 
-## Переименованные и удалённые скилы
+Основные соответствия:
 
-Обнови упоминания в документации, пользовательских командах и сохранённых workflow:
-
-| До 1.0 | В 1.0 | Что изменилось |
-|---|---|---|
-| `eda-start` | `eda-new-project` | Стартовый бриф нового проекта и обязательный запуск `eda-prepare-ai` |
-| `eda-docs` | `eda-prepare-ai` | Полный технический bootstrap: архитектура, правила, проверки, references и AI/MCP-процесс |
-| `eda-execute` | `eda-plan-execute` | Выполнение плана по фазам через изолированных субагентов |
-| `eda-automate` | `eda-discover-automations` | Полный baseline gap-аудит автоматизаций даже без истории |
-| `eda-review-check` | `eda-review` | Специализированные проверки встроены в единый review-workflow |
-| `eda-research` | `eda-explore` | Старое имя окончательно выведено из эксплуатации |
-
-Установщик удалит старые управляемые копии, но не перепишет ссылки на имена скилов в документах проекта.
-
-## Миграция `docs/settings.yaml`
-
-Версия 1.0 поддерживает только формат настроек `version: 2`. При `eda update` ответь на полный набор вопросов: команда соберёт новый профиль и атомарно заменит прежний файл независимо от его версии. `eda update-all` задаст эти вопросы только один раз и применит ответы ко всем проектам.
-
-`eda init` ведёт себя осторожнее: если конфиг уже существует, v2 и неизвестные версии сохраняются, а v1 автоматически мигрируется с переносом поддерживаемых значений. При update-командах прежний файл заменяется выбранным полным профилем, поэтому перед запуском сохрани нестандартные поля отдельно.
-
-Основное соответствие полей:
-
-| `version: 1` | `version: 2` |
+| Старое поле | Новое поле |
 |---|---|
-| `defaults.strict` | `explore.strict`, `plan.strict`, `plan-polish.strict` |
-| `defaults.plan_size` | `plan.size` |
-| `defaults.decision_mode` | `explore.decision_mode`, `plan.decision_mode` |
-| `defaults.test_strategy` | `plan.test_strategy` |
-| `defaults.logging_strategy` | `plan.logging_strategy` |
-| `automate.include_plans` | `discover-automations.include_plans` |
-| `review.include_code_quality: true` | `review.agents.code_quality.mode: always` |
-| `review.include_code_quality: false` | `review.agents.code_quality.mode: off` |
+| `version: 1` или `version: 2` | `version: 3` |
+| `plan.meta_review` | `plan.review` |
+| `plan-polish.strict` | удалено |
+| отсутствует | `plan-review.threshold: 95` |
+| отсутствует | `plan-review.agents.*` |
+| отсутствует | `plan-polish.limit: 3` |
+| `defaults.strict` из v1 | `explore.strict`, `plan.strict` |
+| `defaults.plan_size` из v1 | `plan.size` |
+| `defaults.decision_mode` из v1 | `explore.decision_mode`, `plan.decision_mode` |
+| `automate.include_plans` из v1/v2 | `discover-automations.include_plans` |
 
-У старого `review.strict` нет прямого аналога. В 1.0 каждая проверка в `review.agents` отдельно получает режим `always`, `auto` или `off` и модели для Claude/Codex. Раздел `review-check` больше не используется.
+Также сохраняются валидные `orhestra.steps`, `aim`, `explore`, остальные поля `plan`, `review.agents`, `send-review` и `discover-automations`. Неизвестные пользовательские поля не входят в v3 и после нормализации удаляются.
 
-Результат переноса старых общих настроек выглядит так:
+## Новый plan-review профиль
 
 ```yaml
-version: 2
-
-explore:
-  strict: false
-  decision_mode: recommend_and_ask
+version: 3
 
 plan:
   strict: false
+  review: true
   size: normal
   decision_mode: recommend_and_ask
   test_strategy: ask_each_time
   logging_strategy: ask_each_time
 
+plan-review:
+  threshold: 95
+  agents:
+    requirements:
+      mode: always
+      model:
+        claude: sonnet
+        codex: gpt-5.6-terra
+    architecture:
+      mode: always
+      model:
+        claude: opus
+        codex: gpt-5.6-sol
+
 plan-polish:
-  strict: false
-
-discover-automations:
-  include_plans: false
+  limit: 3
 ```
 
-Новые разделы `orhestra`, `aim`, `review.agents` и `send-review` заполняются ответами на вопросы; в non-TTY запуске используются сбалансированные defaults. Полный актуальный пример приведён в [README](README.md).
+Полный профиль со всеми агентами создаётся установщиком и приведён в README.
 
-## Проверка после миграции
+## Проверка миграции
 
-Проверь версию CLI:
+После `eda update` проверь:
 
-```bash
-eda --version
-```
+- `docs/settings.yaml` содержит `version: 3`, `plan.review`, `plan-review.agents` и `plan-polish.limit`;
+- в `.claude/agents/` или `.codex/agents/` установлены `eda-plan-review-*`;
+- старые ссылки на `plan.meta_review` и `eda-plan-polish strict` удалены из локальных workflow;
+- `git status` показывает только ожидаемую нормализацию настроек и обновление управляемых компонентов.
 
-Затем в каждом проекте проверь:
-
-- в `docs/settings.yaml` указано `version: 2`;
-- старые имена скилов больше не используются в документации и workflow;
-- для выбранных сред появились каталоги скилов и агентов;
-- `git status` показывает только ожидаемые изменения проекта.
-
-Если среда ещё не была установлена в проект, используй `eda init` вместо `eda update`.
+Установщик не создаёт и не перезаписывает корневой `AGENTS.md` пользовательского проекта и не удаляет чужие skills/agents.

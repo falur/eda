@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-plan-review-feasibility",
+  "description": "Проверяет реализуемость плана относительно кода и отсутствие скрытого исследования.",
+  "models": { "claude": "opus", "codex": "gpt-5.6-sol" },
+  "reasoning": { "claude": "high", "codex": "high" },
+  "access": "read-only",
+  "maxTurns": 30
+}

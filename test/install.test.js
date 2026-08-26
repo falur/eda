@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import {
+  askPlanReviewAgentSettings,
   askReviewAgentSettings,
   askSettings,
   askTargets,
@@ -105,7 +106,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '1.0.5');
+    assert.equal(manifest.packageVersion, '2.0.0');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -320,11 +321,11 @@ test('updateAll writes one shared settings file to every updated project', async
   const rootSettings = await fs.readFile(path.join(depthZeroProject, 'docs/settings.yaml'), 'utf8');
   const nestedSettings = await fs.readFile(path.join(depthTwoProject, 'docs/settings.yaml'), 'utf8');
   assert.equal(nestedSettings, rootSettings);
-  assert.match(rootSettings, /^version: 2$/m);
+  assert.match(rootSettings, /^version: 3$/m);
   assert.match(rootSettings, /^discover-automations:\n(?:.*\n)*?  include_plans: false$/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.equal(
-    stdout.match(/Нет интерактивного терминала — использую настройки docs\/settings\.yaml по умолчанию\./g)?.length,
+    stdout.match(/Нет интерактивного терминала — использую перенесённые значения и defaults docs\/settings\.yaml\./g)?.length,
     1
   );
   assert.equal(
@@ -338,7 +339,7 @@ test('updateAll writes one shared settings file to every updated project', async
   assert.equal(await fs.readFile(path.join(depthThreeProject, '.codex/skills/eda-plan.md'), 'utf8'), 'too deep');
 });
 
-test('updateAll skip preserves existing settings and creates defaults only when missing', async () => {
+test('updateAll skip migrates old settings and creates defaults only when missing', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-settings-skip-'));
   const existingProject = path.join(root, 'existing');
   const missingProject = path.join(root, 'missing');
@@ -358,13 +359,15 @@ test('updateAll skip preserves existing settings and creates defaults only when 
   const result = await updateAll({ root, output, settingsMode: 'skip' });
 
   assert.equal(result.settingsMode, 'skip');
-  assert.equal(await fs.readFile(existingSettingsPath, 'utf8'), existingSettings);
+  const migratedSettings = await fs.readFile(existingSettingsPath, 'utf8');
+  assert.match(migratedSettings, /^version: 3$/m);
+  assert.doesNotMatch(migratedSettings, /^custom:/m);
   const createdSettings = await fs.readFile(path.join(missingProject, 'docs/settings.yaml'), 'utf8');
-  assert.match(createdSettings, /^version: 2$/m);
+  assert.match(createdSettings, /^version: 3$/m);
   assert.match(createdSettings, /^orhestra:/m);
   assert.match(createdSettings, /^review:/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.equal(stdout.match(/Существующий файл настроек сохранён: docs\/settings\.yaml/g)?.length, 1);
+  assert.equal(stdout.match(/Старый или неполный файл настроек перенесён на version: 3: docs\/settings\.yaml/g)?.length, 1);
   assert.equal(stdout.match(/Создан файл настроек с defaults: docs\/settings\.yaml/g)?.length, 1);
   assert.doesNotMatch(stdout, /Какие настройки включить|Настройки будут запрошены/);
 });
@@ -439,7 +442,7 @@ test('updateAll discovers a project with only an installed eda agent', async () 
   assert.match(await fs.readFile(path.join(project, '.codex/skills/eda-commit/SKILL.md'), 'utf8'), /name: eda-commit/);
   assert.match(
     await fs.readFile(path.join(project, 'docs/settings.yaml'), 'utf8'),
-    /^version: 2$/m
+    /^version: 3$/m
   );
 });
 
@@ -626,6 +629,7 @@ test('askSettings returns default project settings without an interactive termin
 
   assert.deepEqual({
     ...settings,
+    planReview: { ...settings.planReview, agents: undefined },
     review: undefined
   }, {
     orhestra: {
@@ -658,14 +662,18 @@ test('askSettings returns default project settings without an interactive termin
     },
     plan: {
       strict: false,
-      metaReview: true,
+      review: true,
       size: 'normal',
       decisionMode: 'recommend_and_ask',
       testStrategy: 'ask_each_time',
       loggingStrategy: 'ask_each_time'
     },
+    planReview: {
+      threshold: 95,
+      agents: undefined
+    },
     planPolish: {
-      strict: false
+      limit: 3
     },
     review: undefined,
     sendReview: {
@@ -693,6 +701,12 @@ test('askSettings returns default project settings without an interactive termin
     documentation: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     previous_reviews: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } }
   });
+  assert.deepEqual(settings.planReview.agents.requirements, {
+    mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' }
+  });
+  assert.deepEqual(settings.planReview.agents.previous, {
+    mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' }
+  });
 });
 
 test('askSettings asks only for requested sections', async () => {
@@ -719,7 +733,7 @@ test('askSettings asks only for requested sections', async () => {
   assert.equal(settings.aim.mode, 'manual');
 });
 
-test('interactive plan settings can disable subagent meta-review independently', async () => {
+test('interactive plan settings can disable plan-review independently', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
   input.isTTY = true;
@@ -730,15 +744,34 @@ test('interactive plan settings can disable subagent meta-review independently',
     output,
     sections: ['plan'],
     checkboxPrompt: async prompt => {
-      assert.deepEqual(prompt.choices.map(choice => choice.value), ['planStrict', 'planMetaReview']);
-      assert.equal(prompt.choices.find(choice => choice.value === 'planMetaReview')?.checked, true);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['planStrict', 'planReview']);
+      assert.equal(prompt.choices.find(choice => choice.value === 'planReview')?.checked, true);
       return [];
     },
     selectPrompt: async prompt => prompt.default
   });
 
   assert.equal(settings.plan.strict, false);
-  assert.equal(settings.plan.metaReview, false);
+  assert.equal(settings.plan.review, false);
+});
+
+test('interactive plan-review settings ask mode and per-platform models', async () => {
+  const messages = [];
+  const agents = await askPlanReviewAgentSettings({
+    input: new PassThrough(),
+    output: new PassThrough(),
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      if (prompt.message === 'Когда запускать plan-review-проверку performance?') return 'off';
+      if (prompt.message === 'Когда запускать plan-review-проверку frontend?') return 'always';
+      return prompt.default;
+    }
+  });
+
+  assert.equal(agents.performance.mode, 'off');
+  assert.equal(messages.includes('Какой моделью Claude проверять performance?'), false);
+  assert.equal(agents.frontend.mode, 'always');
+  assert.equal(messages.filter(message => message.startsWith('Когда запускать plan-review-проверку ')).length, 12);
 });
 
 test('interactive review settings ask mode and per-platform models for enabled checks', async () => {
@@ -774,16 +807,24 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   await update({ cwd, output: silentOutput() });
 
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
-  assert.match(settings, /^version: 2$/m);
+  assert.match(settings, /^version: 3$/m);
   assert.match(settings, /^orhestra:\n  # Режим полного цикла eda-orhestra\.\n  # automatic \| manual\n  mode: automatic/m);
   assert.match(settings, /^  steps:\n    - id: plan\n      skill: eda-plan\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "без проверок"/m);
   assert.match(settings, /^    - id: plan-polish\n      skill: eda-plan-polish\n      enabled: true/m);
   assert.match(settings, /^    - id: polish\n      skill: eda-polish\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "limit 5"$/m);
   assert.match(settings, /^      on_failure:\n        skill: eda-fix\n        args: ""\n        # После исправления[^\n]+\n        then:\n          - manual-test\n        max_cycles: 5$/m);
-  assert.match(settings, /^  meta_review: true$/m);
+  assert.match(settings, /^  review: true$/m);
   assert.doesNotMatch(settings, /^  qa:/m);
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
+  assert.match(settings, /^plan-review:\n  # План готов[\s\S]*?^  threshold: 95$/m);
+  assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 3$/m);
+  for (const check of [
+    'requirements', 'rules', 'architecture', 'feasibility', 'execution', 'verification',
+    'api', 'database', 'security', 'frontend', 'performance', 'previous'
+  ]) {
+    assert.match(settings, new RegExp(`^    ${check}:$`, 'm'), `plan-review ${check} must be generated`);
+  }
   assert.doesNotMatch(settings, /^review-check:/m);
   assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
   for (const check of [
@@ -801,7 +842,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.doesNotMatch(settings, /^automate:/m);
 });
 
-test('init migrates docs/settings.yaml from version 1 to version 2', async () => {
+test('init intelligently migrates docs/settings.yaml from version 1 to version 3', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-existing-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
   const output = new PassThrough();
@@ -828,10 +869,10 @@ review:
   await init({ cwd, output });
 
   const settings = await fs.readFile(settingsPath, 'utf8');
-  assert.match(settings, /^version: 2$/m);
+  assert.match(settings, /^version: 3$/m);
   assert.doesNotMatch(settings, /^defaults:/m);
   assert.doesNotMatch(settings, /^automate:/m);
-  assert.equal(settings.match(/^  strict: true$/gm)?.length, 3);
+  assert.equal(settings.match(/^  strict: true$/gm)?.length, 2);
   assert.match(settings, /^  size: short$/m);
   assert.equal(settings.match(/^  decision_mode: autonomous$/gm)?.length, 2);
   assert.match(settings, /^  test_strategy: tdd_each_phase$/m);
@@ -843,26 +884,48 @@ review:
   assert.notEqual(testsStart, -1);
   assert.match(settings.slice(codeQualityStart, testsStart), /mode: off/);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, /Мигрированы настройки docs\/settings\.yaml: version: 1 → version: 2\./);
+  assert.match(stdout, /Переписан файл настроек: docs\/settings\.yaml → version: 3\./);
 });
 
-test('init preserves existing version 2 settings byte for byte', async () => {
+test('init migrates version 2 settings and preserves known nested values', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-v2-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
-  const original = 'version: 2\ncustom: true\n';
+  const original = `version: 2
+orhestra:
+  mode: manual
+  steps:
+    - id: custom-plan
+      skill: eda-plan
+      enabled: true
+      args: "short"
+plan:
+  meta_review: false
+review:
+  agents:
+    correctness:
+      mode: off
+      model: { claude: opus, codex: gpt-5.6-sol }
+`;
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
   await fs.writeFile(settingsPath, original);
 
   await init({ cwd, output: silentOutput() });
 
-  assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
+  const migrated = await fs.readFile(settingsPath, 'utf8');
+  assert.match(migrated, /^version: 3$/m);
+  assert.match(migrated, /^  mode: manual$/m);
+  assert.match(migrated, /^    - id: custom-plan$/m);
+  assert.match(migrated, /^  review: false$/m);
+  const correctness = migrated.slice(migrated.indexOf('    correctness:'), migrated.indexOf('    architecture:', migrated.indexOf('    correctness:')));
+  assert.match(correctness, /mode: off/);
+  assert.match(correctness, /claude: opus/);
 });
 
-test('init preserves settings with an unknown version', async () => {
+test('init normalizes settings with an unknown version and preserves known values', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-unknown-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
-  const original = 'version: 7\ncustom: true\n';
+  const original = 'version: 7\naim:\n  mode: manual\ncustom: true\n';
   const output = new PassThrough();
   const outputChunks = [];
   output.on('data', chunk => outputChunks.push(chunk));
@@ -872,14 +935,14 @@ test('init preserves settings with an unknown version', async () => {
 
   await init({ cwd, output });
 
-  assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
-  assert.match(
-    Buffer.concat(outputChunks).toString('utf8'),
-    /Автомиграция не выполнена: безопасно поддерживается только переход version: 1 → version: 2\./
-  );
+  const migrated = await fs.readFile(settingsPath, 'utf8');
+  assert.match(migrated, /^version: 3$/m);
+  assert.match(migrated, /^aim:\n[\s\S]*?^  mode: manual$/m);
+  assert.doesNotMatch(migrated, /^custom:/m);
+  assert.match(Buffer.concat(outputChunks).toString('utf8'), /Переношу docs\/settings\.yaml на version: 3/);
 });
 
-test('update preserves a complete version 2 settings file byte for byte', async () => {
+test('update preserves a complete version 3 settings file byte for byte', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-update-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
   const output = new PassThrough();
@@ -887,29 +950,20 @@ test('update preserves a complete version 2 settings file byte for byte', async 
   output.on('data', chunk => outputChunks.push(chunk));
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  const original = `version: 2
-
-orhestra: { custom: keep }
-aim: { custom: keep }
-explore: { custom: keep }
-plan: { custom: keep }
-plan-polish: { custom: keep }
-review: { custom: keep }
-send-review: { custom: keep }
-discover-automations: { custom: keep }
-custom: true
-`;
+  await update({ cwd, output: silentOutput() });
+  const generated = await fs.readFile(settingsPath, 'utf8');
+  const original = `${generated}\ncustom: keep-byte-for-byte\n`;
   await fs.writeFile(settingsPath, original);
 
   await update({ cwd, output });
 
   assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, /Настройки docs\/settings\.yaml версии 2 полные — вопросы не требуются\./);
+  assert.match(stdout, /Настройки docs\/settings\.yaml версии 3 полные — вопросы не требуются\./);
   assert.doesNotMatch(stdout, /Нет интерактивного терминала/);
 });
 
-test('update appends only missing version 2 settings sections', async () => {
+test('update rewrites partial version 3 settings while preserving known values', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-update-partial-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
   const output = new PassThrough();
@@ -917,30 +971,28 @@ test('update appends only missing version 2 settings sections', async () => {
   output.on('data', chunk => outputChunks.push(chunk));
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  const original = `version: 2
+  const original = `version: 3
 
-orhestra: { custom: keep }
-explore: { custom: keep }
-plan: { custom: keep }
-plan-polish: { custom: keep }
-review: { custom: keep }
-send-review: { custom: keep }
-discover-automations: { custom: keep }
-custom: true
+aim:
+  mode: manual
+plan:
+  review: false
+  size: short
 `;
   await fs.writeFile(settingsPath, original);
 
   await update({ cwd, output });
 
   const settings = await fs.readFile(settingsPath, 'utf8');
-  assert.ok(settings.startsWith(original));
-  assert.equal(settings.match(/^aim:$/gm)?.length, 1);
-  assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
-  assert.equal(settings.match(/^orhestra:/gm)?.length, 1);
-  assert.match(settings, /^custom: true$/m);
+  assert.match(settings, /^version: 3$/m);
+  assert.match(settings, /^aim:\n[\s\S]*?^  mode: manual$/m);
+  assert.match(settings, /^  review: false$/m);
+  assert.match(settings, /^  size: short$/m);
+  assert.match(settings, /^plan-review:/m);
+  assert.match(settings, /^plan-polish:/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
-  assert.match(stdout, /Дополняю отсутствующие разделы docs\/settings\.yaml: aim\./);
-  assert.match(stdout, /Добавлены разделы docs\/settings\.yaml: aim\./);
+  assert.match(stdout, /Переношу docs\/settings\.yaml на version: 3/);
+  assert.match(stdout, /Переписан файл настроек: docs\/settings\.yaml → version: 3\./);
 });
 
 test('all packaged eda skills describe inline user-message input', async () => {
@@ -1029,7 +1081,8 @@ test('implementation workflow reads only applicable project references', async (
   const readers = [
     'eda-explore',
     'eda-plan',
-    'eda-plan-polish',
+    'eda-plan-review',
+    'eda-plan-review-fix',
     'eda-plan-execute',
     'eda-fix',
     'eda-fix-by-review',
@@ -1052,13 +1105,13 @@ test('implementation workflow reads only applicable project references', async (
 
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
-  const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
+  const planReview = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
 
   assert.match(explore, /references: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(plan, /references: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(plan, /применимым reference-карточкам/);
-  assert.match(planPolish, /Если старый план не содержит `sources\.references`/);
+  assert.match(planReview, /для старого плана выбери только карточки затронутых компонентов через `docs\/references\.md`/i);
   assert.match(review, /`references` включай только при непустом `\$REFERENCE_FILES`/);
   assert.match(review, /остальные → `eda-review-<check>`/);
 });
@@ -1068,7 +1121,8 @@ test('workflow skills select only applicable project business cards after task s
     'eda-roadmap',
     'eda-explore',
     'eda-plan',
-    'eda-plan-polish',
+    'eda-plan-review',
+    'eda-plan-review-fix',
     'eda-plan-execute',
     'eda-fix',
     'eda-fix-by-review',
@@ -1087,27 +1141,26 @@ test('workflow skills select only applicable project business cards after task s
   const roadmap = await fs.readFile(skillPath('eda-roadmap'), 'utf8');
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
-  const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
+  const planReview = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
   const execute = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(roadmap, /business: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(explore, /business: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(plan, /business: \[<пути к применимым карточкам или пусто>\]/);
-  assert.match(planPolish, /Если старый план не содержит `sources\.business`/);
+  assert.match(planReview, /для старого плана выбери только применимые карточки через `docs\/business\.md`/i);
   assert.match(execute, /у старого плана без поля выбирает через `docs\/business\.md`/);
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
   const strictSkills = new Map([
     ['eda-explore', 'explore'],
-    ['eda-plan', 'plan'],
-    ['eda-plan-polish', 'plan-polish']
+    ['eda-plan', 'plan']
   ]);
 
   for (const [file, section] of strictSkills) {
     const content = await fs.readFile(skillPath(file), 'utf8');
     assert.match(content, /docs\/settings\.yaml/, `${file} must mention docs/settings.yaml`);
-    assert.match(content, /version: 2/, `${file} must require settings version 2`);
+    assert.match(content, /version: 3/, `${file} must require settings version 3`);
     assert.match(content, new RegExp(`${section.replace('-', '\\-')}\\.strict: false`), `${file} must document its strict default`);
     assert.doesNotMatch(content, /defaults\./, `${file} must not read legacy defaults`);
   }
@@ -1117,9 +1170,20 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(plan, /plan\.size` \| `normal`, `short`, `ask_each_time`/);
   assert.match(plan, /plan\.decision_mode: recommend_and_ask/);
   assert.match(plan, /plan\.decision_mode` \| `autonomous`, `recommend_and_ask`, `ask_each_time`/);
-  assert.match(plan, /plan\.meta_review: true/);
-  assert.match(plan, /plan\.meta_review` \| `true`, `false`/);
-  assert.match(plan, /`без проверок`.*`plan\.meta_review: false`.*`plan\.strict: false`/s);
+  assert.match(plan, /plan\.review: true/);
+  assert.match(plan, /`plan\.review` \| `true`, `false`/);
+  assert.match(plan, /`без проверок`.*`plan\.review: false`.*`plan\.strict: false`/s);
+
+  const planReview = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
+  assert.match(planReview, /version: 3/);
+  assert.match(planReview, /plan-review\.threshold/);
+  assert.match(planReview, /plan-review\.agents\.<check>\.mode\/model/);
+
+  const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
+  assert.match(planPolish, /version: 3/);
+  assert.match(planPolish, /plan-review\.threshold/);
+  assert.match(planPolish, /plan-polish\.limit/);
+  assert.doesNotMatch(planPolish, /plan-polish\.strict: false/);
 
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
   assert.match(explore, /explore\.decision_mode: recommend_and_ask/);
@@ -1129,7 +1193,7 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(discoverAutomations, /discover-automations\.include_plans: false/);
   assert.match(discoverAutomations, /discover-automations\.include_plans: true/);
   assert.match(discoverAutomations, /`automate\.include_plans` as compatible fallback|`automate\.include_plans` как совместимый fallback/);
-  assert.match(discoverAutomations, /version: 2/);
+  assert.match(discoverAutomations, /version: 3/);
 
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
   assert.match(review, /review\.agents\.<check>\.mode/);
@@ -1142,11 +1206,11 @@ test('config-aware skills read docs/settings.yaml', async () => {
 
   const sendReview = await fs.readFile(skillPath('eda-send-review'), 'utf8');
   assert.match(sendReview, /send-review\.close_previous_reviews: false/);
-  assert.match(sendReview, /version: 2/);
+  assert.match(sendReview, /version: 3/);
 
   const orhestra = await fs.readFile(skillPath('eda-orhestra'), 'utf8');
   assert.match(orhestra, /docs\/settings\.yaml/);
-  assert.match(orhestra, /version: 2/);
+  assert.match(orhestra, /version: 3/);
   assert.match(orhestra, /orhestra\.mode: automatic/);
   assert.match(orhestra, /`automatic` или `manual`/);
   assert.match(orhestra, /orhestra\.steps/);
@@ -1156,7 +1220,7 @@ test('config-aware skills read docs/settings.yaml', async () => {
 
   const aim = await fs.readFile(skillPath('eda-aim'), 'utf8');
   assert.match(aim, /docs\/settings\.yaml/);
-  assert.match(aim, /version: 2/);
+  assert.match(aim, /version: 3/);
   assert.match(aim, /aim:\n  mode: automatic/);
   assert.match(aim, /`aim\.mode` принимает только `automatic` или `manual`/);
   assert.match(aim, /Прямое указание режима в текущем сообщении всегда важнее настройки/);
@@ -1391,61 +1455,36 @@ test('eda-plan final format keeps risks and dependencies inside cohesive single-
   assert.match(content, /Зависит от: `—`/);
   assert.match(content, /Одну фазу целиком выполняет один изолированный субагент/);
   assert.match(content, /слишком крупную или несвязную фазу раздели/);
-  assert.match(content, /слишком крупные или несвязные фазы для одного исполнителя/);
   assert.doesNotMatch(content, /Параллельно:/);
 });
 
-test('eda-plan keeps its fallback while eda-review requires native packaged subagents', async () => {
+test('eda-plan delegates plan review and fix while review workflows require native packaged subagents', async () => {
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
 
-  assert.match(plan, /Codex interactive \(`spawn_agent`\)/);
-  assert.match(plan, /Не используй отдельные `codex exec` для обычного мета-ревью, когда субагенты доступны/);
-  assert.match(plan, /Codex exec \/ non-interactive fallback/);
+  assert.match(plan, /Запусти один `eda-plan-review`/);
+  assert.match(plan, /запусти ровно один новый изолированный субагент/);
+  assert.match(plan, /Не запускай второй review внутри `eda-plan`/);
+  assert.match(plan, /При недоступности нативных субагентов остановись; не используй CLI-fallback/);
 
   assert.match(review, /В Codex запускай установленный custom agent через `spawn_agent` или аналог/);
   assert.match(review, /нативные субагенты недоступны, остановись/);
   assert.match(review, /не создавай отдельные CLI-процессы/);
 });
 
-test('eda-plan-polish documents three full-plan reviewers and forbids checks', async () => {
+test('eda-plan-polish uses bounded specialized review and fix iterations', async () => {
   const content = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
 
   assert.match(content, /name: eda-plan-polish/);
-  assert.match(content, /готовый план/);
-  assert.match(content, /Порог качества по умолчанию — `95`/);
-  assert.match(content, /Лимит по умолчанию — `5` итераций/);
-  assert.match(content, /0–100/);
-  assert.match(content, /один общий промпт/);
-  assert.match(content, /каждый проверяет весь план целиком/);
-  assert.match(content, /Прочитай только выбранный план целиком/);
-  assert.match(content, /Сам не читай `docs\/rules\.md`, `docs\/arch\.md`, `sources\.business`, `sources\.references`, `sources\.research` и релевантный код на этом шаге/);
-  assert.match(content, /проверка бизнес-требований, правил, архитектуры, эталонов, research и кода — их работа/);
-  assert.match(content, /Не ставь предварительную оценку без агентов/);
-  assert.match(content, /Итоговую оценку 0–100 выставляй только после чтения результатов всех трёх агентов/);
-  assert.match(content, /параллельно/);
-  assert.match(content, /`haiku`/);
-  assert.match(content, /`sonnet`/);
-  assert.match(content, /`opus`/);
-  assert.match(content, /`gpt-5\.4-mini`/);
-  assert.match(content, /`gpt-5\.3-codex`/);
-  assert.match(content, /`gpt-5\.5`/);
-  assert.match(content, /Не заменяй три уровня одной моделью/);
-  assert.match(content, /strict/);
-  assert.match(content, /кросс-CLI/);
-  assert.match(content, /Claude CLI/);
-  assert.match(content, /Codex CLI/);
-  assert.match(content, /не заменяй кросс-CLI четвёртым локальным субагентом/i);
-  assert.match(content, /Не запускай проверки/);
-  assert.match(content, /test`, `lint`, `build`, `typecheck`/);
-  assert.match(content, /Принять/);
-  assert.match(content, /Отклонить/);
-  assert.match(content, /Не правишь код/);
-  assert.match(content, /score не растёт/);
-  assert.match(content, /Оценка plan-polish/);
-  assert.match(content, /Изменения после plan-polish/);
-  assert.doesNotMatch(content, /Агентов запускай только если оценка ниже порога/);
-  assert.doesNotMatch(content, /агенты не запускались/);
+  assert.match(content, /`eda-plan-review` → `eda-plan-review-fix apply-optional` → повторный `eda-plan-review`/);
+  assert.match(content, /plan-review\.threshold.*default `95`/);
+  assert.match(content, /plan-polish\.limit.*default `3`/);
+  assert.match(content, /Если это последняя разрешённая review-итерация.*fix не запускай/);
+  assert.match(content, /не изменились open\/resolved\/regressed\/waived ID и score/);
+  assert.match(content, /один подтверждённый круг без прогресса уже останавливает цикл/);
+  assert.match(content, /Score не повышай и не пересчитывай сам/);
+  assert.match(content, /Запускать кросс-CLI, `strict`, `codex exec` или `claude -p`/);
+  assert.match(content, /менять код или запускать проверки проекта/);
 });
 
 test('eda-review orchestrates specialized agents without legacy modes or cross cli', async () => {
@@ -1499,6 +1538,37 @@ test('eda-review roles live in packaged agents with structured contracts', async
   }
 
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
+});
+
+test('eda-plan-review roles live in read-only packaged agents with structured contracts', async () => {
+  const expected = [
+    ['requirements', 'sonnet', 'gpt-5.6-terra'],
+    ['rules', 'haiku', 'gpt-5.6-luna'],
+    ['architecture', 'opus', 'gpt-5.6-sol'],
+    ['feasibility', 'opus', 'gpt-5.6-sol'],
+    ['execution', 'sonnet', 'gpt-5.6-terra'],
+    ['verification', 'sonnet', 'gpt-5.6-terra'],
+    ['api', 'sonnet', 'gpt-5.6-terra'],
+    ['database', 'opus', 'gpt-5.6-sol'],
+    ['security', 'opus', 'gpt-5.6-sol'],
+    ['frontend', 'sonnet', 'gpt-5.6-terra'],
+    ['performance', 'opus', 'gpt-5.6-sol'],
+    ['previous', 'haiku', 'gpt-5.6-luna']
+  ];
+
+  for (const [role, claude, codex] of expected) {
+    const dir = path.join(AGENTS_SRC, `eda-plan-review-${role}`);
+    const config = JSON.parse(await fs.readFile(path.join(dir, 'agent.json'), 'utf8'));
+    const prompt = await fs.readFile(path.join(dir, 'prompt.md'), 'utf8');
+    assert.equal(config.name, `eda-plan-review-${role}`);
+    assert.equal(config.models.claude, claude);
+    assert.equal(config.models.codex, codex);
+    assert.equal(config.access, 'read-only');
+    assert.match(prompt, /Верни один YAML-блок/);
+    assert.match(prompt, /status: completed \| not_applicable \| blocked/);
+    assert.match(prompt, /prior_findings:/);
+    assert.match(prompt, /не выставляй score/i);
+  }
 });
 
 test('eda-review-business checks applicable business rules without replacing task intent', async () => {
@@ -1683,7 +1753,7 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists packaged workflow skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /двадцать скилов/);
+  assert.match(content, /двадцать два скила/);
   assert.match(content, /`eda-orhestra`/);
   assert.match(content, /orhestra\.steps/);
   assert.match(content, /args: "limit 5"/);
@@ -1693,6 +1763,8 @@ test('readme lists packaged workflow skills', async () => {
   assert.match(content, /`eda-business`/);
   assert.match(content, /`eda-prepare-ai`/);
   assert.match(content, /`eda-plan-polish`/);
+  assert.match(content, /`eda-plan-review`/);
+  assert.match(content, /`eda-plan-review-fix`/);
   assert.match(content, /`eda-manual-test`/);
   assert.match(content, /docs\/manual-tests/);
   assert.match(content, /`eda-worktree`/);

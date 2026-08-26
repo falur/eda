@@ -1,6 +1,6 @@
 {
   "name": "@gian-tiaga/eda",
-  "version": "1.0.5",
+  "version": "2.0.0",
   "description": "Пакет скилов и специализированных агентов eda-* для Claude Code и Codex CLI",
   "type": "module",
   "bin": {
@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@inquirer/checkbox": "^4.3.2",
-    "@inquirer/select": "^5.1.5"
+    "@inquirer/select": "^5.1.5",
+    "yaml": "^2.9.0"
   }
 }

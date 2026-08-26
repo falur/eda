@@ -1,0 +1,188 @@
+---
+name: eda-plan-review
+description: 'Проводит специализированное read-only ревью готового плана и сохраняет findings с оценкой готовности.'
+---
+
+# Скил: Ревью плана (eda-plan-review)
+
+Работай как оркестратор установленных `eda-plan-review-*` агентов. Сам не выполняй их специализированные роли и не копируй их prompts в task-сообщения. Выбери план и проверки, запусти агентов, проверь структурированные ответы, дедуплицируй подтверждённые findings, выставь экспертный score и сохрани один review-артефакт.
+
+## Вход из сообщения пользователя
+
+Текст рядом с вызовом — главный вход. Разбери путь или название плана, «последний план», threshold, предыдущие review/fix, отключённые или принудительно включённые проверки и разовые модели.
+
+Если входа достаточно, продолжай без вопроса. `AskUserQuestion` используй только если план нельзя выбрать однозначно или переданная цепочка review/fix противоречива. Старую историю диалога не считай входом без явной связи с текущим вызовом.
+
+## Настройки
+
+Прочитай `docs/settings.yaml`, если файл есть. Поддерживается только `version: 3`; при другой версии или невалидном поле используй defaults и добавь warning. Прямое указание пользователя важнее файла.
+
+Используй `plan-review.threshold` и `plan-review.agents.<check>.mode/model`. Threshold по умолчанию `95`, допустимы целые значения `1–100`.
+
+| Проверка | Default mode | Claude | Codex |
+|---|---|---|---|
+| `requirements` | `always` | `sonnet` | `gpt-5.6-terra` |
+| `rules` | `always` | `haiku` | `gpt-5.6-luna` |
+| `architecture` | `always` | `opus` | `gpt-5.6-sol` |
+| `feasibility` | `always` | `opus` | `gpt-5.6-sol` |
+| `execution` | `always` | `sonnet` | `gpt-5.6-terra` |
+| `verification` | `always` | `sonnet` | `gpt-5.6-terra` |
+| `api` | `auto` | `sonnet` | `gpt-5.6-terra` |
+| `database` | `auto` | `opus` | `gpt-5.6-sol` |
+| `security` | `auto` | `opus` | `gpt-5.6-sol` |
+| `frontend` | `auto` | `sonnet` | `gpt-5.6-terra` |
+| `performance` | `auto` | `opus` | `gpt-5.6-sol` |
+| `previous` | `auto` | `haiku` | `gpt-5.6-luna` |
+
+Режимы: `always` — каждый раз, `auto` — только по применимости, `off` — не запускать. Неизвестную модель замени default конкретного агента и добавь warning.
+
+## Вопросы
+
+Когда нужен блокирующий вопрос:
+
+- Claude Code: используй `AskUserQuestion`.
+- Codex interactive: используй `request_user_input`, если доступен; иначе задай один короткий вопрос с 2–3 вариантами и остановись.
+- Codex exec/non-interactive: не читай stdin; верни `blocked: нужен план или решение пользователя`.
+
+## Подготовить контекст
+
+1. Выбери `$PLAN_FILE` только в `docs/plans/`: явный путь, однозначное совпадение или самый новый файл при словах «последний план». Без готового плана остановись.
+2. Прочитай план целиком и вычисли SHA-256 его байтов как `$PLAN_SHA256` доступной read-only командой.
+3. Прочитай `AGENTS.md`, `CLAUDE.md`, `docs/rules.md`, `docs/arch.md` и front matter плана настолько, чтобы выбрать проверки, но не делай собственное ревью.
+4. Определи `$BUSINESS_FILES`: используй относящиеся к задаче пути из `sources.business`; для старого плана выбери только применимые карточки через `docs/business.md`. Если подходящих нет — `none`.
+5. Определи `$REFERENCE_FILES`: используй применимые пути из `sources.references`; для старого плана выбери только карточки затронутых компонентов через `docs/references.md`. Не загружай весь каталог.
+6. Определи `$RESEARCH_FILE` из `sources.research` или `none`.
+7. Сформируй краткий `$PLAN_CONTEXT`: исходная задача, scope, критерии готовности, затронутые компоненты, подтверждённые решения и пути к документам. Если задача неизвестна, напиши `task: unknown`.
+8. Определи `$PREVIOUS_REVIEW` и `$PREVIOUS_FIX`. Явные пути имеют приоритет. Иначе используй последний review для того же канонического пути только когда его `plan_sha256` равен текущему SHA-256 или `after_sha256` связанного fix равен текущему SHA-256. Несвязанную историю не подмешивай.
+
+## Выбрать проверки
+
+- `requirements`, `rules`, `architecture`, `feasibility`, `execution`, `verification` запускай по `always/auto/off`; их default `always`.
+- `api` в auto включай для endpoint, handler, DTO, GraphQL/RPC, events, queues, webhooks и внешних интеграций.
+- `database` в auto включай для схем, моделей хранения, SQL, миграций, индексов и транзакций.
+- `security` в auto включай для auth, permissions, внешнего ввода, файлов, сети, секретов, криптографии и чувствительных данных.
+- `frontend` в auto включай для UI-компонентов, стилей, клиентских маршрутов и пользовательского состояния.
+- `performance` в auto включай для запросов, пакетной обработки, кешей, конкурентности, памяти и горячих путей.
+- `previous` в auto включай только при непустой связанной цепочке.
+- Прямые «без X», «включи X» и разовая модель важнее settings.
+
+Запиши skipped-проверки и причины. Forced-проверка запускается даже если auto-критерий не найден; агент может вернуть `not_applicable`.
+
+## Запустить агентов
+
+Запусти все выбранные проверки одним параллельным пакетом через установленных нативных агентов:
+
+- Claude Code: custom agent `eda-plan-review-<check>` через `Agent` tool с настроенной моделью.
+- Codex: custom agent `eda-plan-review-<check>` через `spawn_agent` или точный аналог с настроенной моделью.
+
+Если нативные packaged-агенты недоступны, остановись. Не используй generic-субагентов, `codex exec`, `claude -p` или основной агент как fallback.
+
+В task-сообщение передавай только рабочую директорию, `PLAN_FILE`, `PLAN_SHA256`, `BUSINESS_FILES`, `REFERENCE_FILES`, `RESEARCH_FILE`, `PREVIOUS_REVIEW`, `PREVIOUS_FIX`, `MODEL` и `$PLAN_CONTEXT`. Полная семантика проверки хранится в prompt агента.
+
+## Проверить ответы
+
+Для каждого ответа проверь:
+
+- один YAML-блок и допустимый `status`;
+- `check` совпадает с ролью, `model` — с фактической моделью;
+- `findings` и `prior_findings` — массивы;
+- у каждого finding есть fingerprint, severity, recommendation, plan_location, problem, evidence, impact, fix, acceptance;
+- `blocked` содержит question; `not_applicable` не содержит findings.
+
+Невалидного или упавшего агента один раз повтори на той же модели с указанием только нарушения контракта. Повторный сбой любой выбранной проверки блокирует всё ревью; итоговый файл не сохраняй.
+
+## Агрегировать findings
+
+1. Подтверди evidence точечным чтением указанных файлов. Не добавляй самостоятельные domain-находки.
+2. Отклони недоказанное, вкусовое, уже закрытое, выходящее за scope или противоречащее подтверждённому решению. Существенные отклонения сохрани с fingerprint и причиной.
+3. Объедини findings с одной первопричиной и одной правкой, сохранив все checks и evidence.
+4. Для совпадающего fingerprint сохрани прежний ID. Новому finding дай следующий свободный `PR-NNN`; номер не переиспользуй.
+5. Статусы `waived` сохраняй без повторного открытия, пока нет нового evidence. Required нельзя сделать waived без явного решения пользователя, меняющего исходное требование.
+6. В итог включай только открытые required/optional findings и состояния прошлых ID.
+
+## Выставить score и gate
+
+Score выставляет главный агент экспертно после обработки всех агентов. Не усредняй оценки, не используй формулу вычетов и не проси агентов ставить score.
+
+- `95–100`: обязательных findings нет, план исполним.
+- `80–94`: остаётся required medium или несколько существенных optional.
+- `60–79`: есть required high.
+- ниже `60`: есть critical или требуется серьёзное перепланирование.
+- при отсутствии открытых findings score равен `100`.
+- если состояния open/resolved/regressed/waived не изменились относительно предыдущего review, score не меняй.
+- каждое изменение score объясни закрытыми, новыми или регрессировавшими ID.
+
+Статус `ready` ставь только когда нет открытых required и `$SCORE >= $THRESHOLD`. Иначе статус `changes-required`. Не выдумывай finding только ради достижения threshold.
+
+## Сохранить review
+
+После успешной обработки всех выбранных агентов создай `docs/plan-reviews/{YYYY-MM-DD}_{HH-MM}_{slug}.md`:
+
+```markdown
+---
+plan: <docs/plans/...>
+plan_sha256: <sha256>
+previous_review: <path | none>
+previous_fix: <path | none>
+score: <0..100>
+threshold: <1..100>
+status: <ready | changes-required>
+date: <YYYY-MM-DD HH:MM>
+checks:
+  - name: <check>
+    model: <model>
+    status: <completed | skipped>
+    reason: <применимость или причина пропуска>
+---
+
+# Ревью плана: <название>
+
+## Оценка
+**<score>/100.** <экспертное объяснение и изменение относительно предыдущего score>
+
+## Покрытие
+- **Completed:** <checks и модели>
+- **Skipped:** <checks и причины>
+- **Warnings:** <warnings или «нет»>
+
+## Состояние предыдущих findings
+| ID | Статус | Доказательство |
+|---|---|---|
+
+## Findings
+
+### PR-001. <заголовок>
+- **Checks:** <роли>
+- **Severity:** <critical | high | medium | low>
+- **Recommendation:** <required | optional>
+- **Fingerprint:** `<fingerprint>`
+- **Место в плане:** <раздел или задача>
+- **Проблема:** <что не так>
+- **Доказательства:** <evidence>
+- **Риск:** <impact>
+- **Исправление:** <fix>
+- **Приёмка:** <acceptance>
+
+## Отклонённые предложения
+- `<fingerprint>` — <причина или «нет»>
+
+## Gate
+- **Required open:** <ID или «нет»>
+- **Optional open:** <ID или «нет»>
+- **Результат:** <ready | changes-required>
+```
+
+Review содержит только проблемы и техническое покрытие, без похвалы и длинного пересказа плана.
+
+## Финал
+
+Сообщи путь, status, score/threshold, число required/optional, completed/skipped и previous chain. При `changes-required` предложи `eda-plan-review-fix`; при `ready` — `eda-plan-execute` или возврат вызывающему `eda-plan-polish`.
+
+## Чего НЕ делать
+
+- Править план, код, настройки или документацию проекта.
+- Запускать тесты, lint, build, typecheck, серверы, миграции, браузерные проверки или API-запросы.
+- Выполнять специализированную роль главным агентом.
+- Запускать другой CLI или generic-fallback.
+- Усреднять score агентов, менять score без изменения findings или переоткрывать waived без нового evidence.
+- Сохранять итог после повторного сбоя выбранного агента.
