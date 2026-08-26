@@ -681,6 +681,7 @@ test('askSettings returns default project settings without an interactive termin
     architecture: { mode: 'auto', model: { claude: 'opus', codex: 'gpt-5.6-sol' } },
     rules: { mode: 'always', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     references: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
+    business: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
     plan_alignment: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
     code_quality: { mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
     tests: { mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
@@ -763,7 +764,7 @@ test('interactive review settings ask mode and per-platform models for enabled c
     mode: 'always',
     model: { claude: 'opus', codex: 'gpt-5.6-sol' }
   });
-  assert.equal(messages.filter(message => message.startsWith('Когда запускать review-проверку ')).length, 14);
+  assert.equal(messages.filter(message => message.startsWith('Когда запускать review-проверку ')).length, 15);
 });
 
 test('update creates default docs/settings.yaml when it is missing', async () => {
@@ -786,7 +787,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.doesNotMatch(settings, /^review-check:/m);
   assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
   for (const check of [
-    'correctness', 'architecture', 'rules', 'references', 'plan_alignment', 'code_quality', 'tests',
+    'correctness', 'architecture', 'rules', 'references', 'business', 'plan_alignment', 'code_quality', 'tests',
     'security', 'performance', 'frontend', 'api', 'database', 'documentation', 'previous_reviews'
   ]) {
     assert.match(settings, new RegExp(`^    ${check}:$`, 'm'), `${check} must be generated`);
@@ -963,6 +964,27 @@ test('all packaged eda skills keep trigger descriptions concise', async () => {
   }
 });
 
+test('eda-business creates only confirmed business cards and a simple index', async () => {
+  const content = await fs.readFile(skillPath('eda-business'), 'utf8');
+
+  assert.match(content, /name: eda-business/);
+  assert.match(content, /Если пользователь назвал тему, работай только с ней/);
+  assert.match(content, /Если тема не названа, проанализируй проект и предложи упорядоченный список тем/);
+  assert.match(content, /Для полного каталога первой предлагай `about`/);
+  assert.match(content, /Одна тема за раз/);
+  assert.match(content, /В индекс — только готовое/);
+  assert.match(content, /До подтверждения ничего не записывай/);
+  assert.match(content, /меняй лишь `docs\/business\.md` и Markdown-файлы непосредственно в `docs\/business\/`/i);
+  assert.match(content, /\| Описание \| Карточка \|/);
+  assert.doesNotMatch(content, /\| Описание \| Карточка \| Статус \||\| Тема \| Когда читать \| Статус/);
+  assert.match(content, /## Расхождения с реализацией/);
+  assert.match(content, /раздел `Расхождения с реализацией` последний/);
+  assert.match(content, /Claude Code: используй `AskUserQuestion`/);
+  assert.match(content, /Codex interactive/);
+  assert.match(content, /Codex exec \/ неинтерактивный запуск/);
+  assert.match(content, /blocked: нужен ответ пользователя/);
+});
+
 test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoints separate', async () => {
   const content = await fs.readFile(skillPath('eda-prepare-ai'), 'utf8');
 
@@ -1035,10 +1057,44 @@ test('implementation workflow reads only applicable project references', async (
 
   assert.match(explore, /references: \[<пути к применимым карточкам или пусто>\]/);
   assert.match(plan, /references: \[<пути к применимым карточкам или пусто>\]/);
-  assert.match(plan, /подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
+  assert.match(plan, /применимым reference-карточкам/);
   assert.match(planPolish, /Если старый план не содержит `sources\.references`/);
   assert.match(review, /`references` включай только при непустом `\$REFERENCE_FILES`/);
   assert.match(review, /остальные → `eda-review-<check>`/);
+});
+
+test('workflow skills select only applicable project business cards after task scope', async () => {
+  const readers = [
+    'eda-roadmap',
+    'eda-explore',
+    'eda-plan',
+    'eda-plan-polish',
+    'eda-plan-execute',
+    'eda-fix',
+    'eda-fix-by-review',
+    'eda-review',
+    'eda-manual-test',
+    'eda-prepare-ai',
+    'eda-discover-automations'
+  ];
+
+  for (const file of readers) {
+    const content = await fs.readFile(skillPath(file), 'utf8');
+    assert.match(content, /docs\/business\.md|sources\.business|BUSINESS_FILES/, `${file} must discover business cards`);
+    assert.match(content, /только (?:карточки|применимые|относящиеся|business-карточки)|только непосредственно|только применимые/i, `${file} must load business cards selectively`);
+  }
+
+  const roadmap = await fs.readFile(skillPath('eda-roadmap'), 'utf8');
+  const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
+  const execute = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
+
+  assert.match(roadmap, /business: \[<пути к применимым карточкам или пусто>\]/);
+  assert.match(explore, /business: \[<пути к применимым карточкам или пусто>\]/);
+  assert.match(plan, /business: \[<пути к применимым карточкам или пусто>\]/);
+  assert.match(planPolish, /Если старый план не содержит `sources\.business`/);
+  assert.match(execute, /у старого плана без поля выбирает через `docs\/business\.md`/);
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
@@ -1363,8 +1419,8 @@ test('eda-plan-polish documents three full-plan reviewers and forbids checks', a
   assert.match(content, /один общий промпт/);
   assert.match(content, /каждый проверяет весь план целиком/);
   assert.match(content, /Прочитай только выбранный план целиком/);
-  assert.match(content, /Сам не читай `docs\/rules\.md`, `docs\/arch\.md`, `sources\.references`, `sources\.research` и релевантный код на этом шаге/);
-  assert.match(content, /проверка правил, архитектуры, эталонов, research и кода — их работа/);
+  assert.match(content, /Сам не читай `docs\/rules\.md`, `docs\/arch\.md`, `sources\.business`, `sources\.references`, `sources\.research` и релевантный код на этом шаге/);
+  assert.match(content, /проверка бизнес-требований, правил, архитектуры, эталонов, research и кода — их работа/);
   assert.match(content, /Не ставь предварительную оценку без агентов/);
   assert.match(content, /Итоговую оценку 0–100 выставляй только после чтения результатов всех трёх агентов/);
   assert.match(content, /параллельно/);
@@ -1415,6 +1471,7 @@ test('eda-review roles live in packaged agents with structured contracts', async
     ['architecture', 'opus', 'gpt-5.6-sol'],
     ['rules', 'haiku', 'gpt-5.6-luna'],
     ['references', 'haiku', 'gpt-5.6-luna'],
+    ['business', 'sonnet', 'gpt-5.6-terra'],
     ['plan-alignment', 'sonnet', 'gpt-5.6-terra'],
     ['code-quality', 'sonnet', 'gpt-5.6-terra'],
     ['tests', 'sonnet', 'gpt-5.6-terra'],
@@ -1442,6 +1499,31 @@ test('eda-review roles live in packaged agents with structured contracts', async
   }
 
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
+});
+
+test('eda-review-business checks applicable business rules without replacing task intent', async () => {
+  const review = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const config = JSON.parse(await fs.readFile(path.join(AGENTS_SRC, 'eda-review-business/agent.json'), 'utf8'));
+  const prompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-review-business/prompt.md'), 'utf8');
+
+  assert.equal(config.models.claude, 'sonnet');
+  assert.equal(config.models.codex, 'gpt-5.6-terra');
+  assert.equal(config.reasoning.claude, 'medium');
+  assert.equal(config.reasoning.codex, 'medium');
+  assert.equal(config.access, 'read-only');
+
+  assert.match(review, /\| `business` \| `auto` \| `sonnet` \| `gpt-5\.6-terra` \|/);
+  assert.match(review, /`business` включай только при непустом `\$BUSINESS_FILES`/);
+  assert.match(review, /без business/);
+  assert.match(review, /включи business/);
+  assert.match(review, /## Проблемы бизнес-логики/);
+  assert.match(prompt, /Сначала установи намерение сделанных изменений по текущей задаче/);
+  assert.match(prompt, /Не выдумывай его, если передано `task: unknown`/);
+  assert.match(prompt, /Если `BUSINESS_FILES=none`/);
+  assert.match(prompt, /это проблема бизнес-логики/);
+  assert.match(prompt, /это рассинхронизация business-документации/);
+  assert.match(prompt, /check: business/);
+  assert.match(prompt, /business-карточка.*код, diff, задача или план/s);
 });
 
 test('eda-plan requires implementation contracts for data and api changes', async () => {
@@ -1601,13 +1683,14 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists packaged workflow skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /девятнадцать скилов/);
+  assert.match(content, /двадцать скилов/);
   assert.match(content, /`eda-orhestra`/);
   assert.match(content, /orhestra\.steps/);
   assert.match(content, /args: "limit 5"/);
   assert.match(content, /args: "threshold 90 limit 2"/);
   assert.match(content, /без полировки/);
   assert.match(content, /`eda-new-project`/);
+  assert.match(content, /`eda-business`/);
   assert.match(content, /`eda-prepare-ai`/);
   assert.match(content, /`eda-plan-polish`/);
   assert.match(content, /`eda-manual-test`/);
@@ -1615,6 +1698,7 @@ test('readme lists packaged workflow skills', async () => {
   assert.match(content, /`eda-worktree`/);
   assert.match(content, /`eda-merge-worktree`/);
   assert.match(content, /`eda-review-frontend`/);
+  assert.match(content, /`eda-review-business`/);
   assert.match(content, /review\.agents\.<check>\.mode/);
   assert.match(content, /`eda-review-check` выведен из эксплуатации/);
   assert.doesNotMatch(content, /^\| `eda-review-check`/m);
@@ -1654,6 +1738,12 @@ test('eda-manual-test documents manual API and frontend smoke checks', async () 
   assert.match(content, /Не правь код/);
   assert.match(content, /не пиши и не обновляй автотесты/);
   assert.match(content, /не устанавливай зависимости молча/);
+  assert.match(content, /Основной чеклист строй по выполненной задаче/);
+  assert.match(content, /Это главный источник сценариев и критериев/);
+  assert.match(content, /Если таких карточек нет, продолжай без business-контекста и без предупреждения/);
+  assert.match(content, /Она не заменяет критерии задачи/);
+  assert.match(content, /не требует тестировать всю предметную область/);
+  assert.match(content, /проверять изменённую задачу как новое правило или сначала пересогласовать карточку через `eda-business`/);
 });
 
 test('eda-polish documents the full-review-fix loop and limits', async () => {
@@ -1682,14 +1772,16 @@ test('eda-plan-execute forbids suppressing failing checks', async () => {
   assert.match(content, /Подавлять ошибки проверок, ослаблять правила или менять команды ради зелёного результата/);
 });
 
-test('eda-plan-execute treats rules, architecture, and references as mandatory execution frame', async () => {
+test('eda-plan-execute treats business, rules, architecture, and references as mandatory execution frame', async () => {
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /Рамку читает исполнитель фазы/);
-  assert.match(content, /Каждый исполнитель целиком читает план, `docs\/rules\.md`, `docs\/arch\.md` и индекс `docs\/references\.md`/);
+  assert.match(content, /Каждый исполнитель целиком читает план, `docs\/rules\.md` и `docs\/arch\.md`/);
+  assert.match(content, /Для поведения своей фазы он читает карточки из `sources\.business`/);
   assert.match(content, /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, исполнитель читает эту карточку целиком перед соответствующим изменением/);
-  assert.match(content, /Приоритет: подтверждённое решение пользователя → `docs\/rules\.md` → `docs\/arch\.md` → релевантные карточки/);
-  assert.match(content, /необоснованном отклонении от примера/);
+  assert.match(content, /План задаёт область выполняемой работы, а применимые business-карточки — требования/);
+  assert.match(content, /изменить план через `eda-plan` или сначала пересогласовать правило через `eda-business`/);
+  assert.match(content, /business_read: \[<пути или пусто>\]/);
 });
 
 test('eda-plan-execute delegates whole phases, fixes, and checks while managing progress', async () => {
