@@ -631,7 +631,8 @@ test('askSettings returns default project settings without an interactive termin
     orhestra: {
       mode: 'automatic',
       steps: [
-        { id: 'plan', skill: 'eda-plan', enabled: true, args: '' },
+        { id: 'plan', skill: 'eda-plan', enabled: true, args: 'без проверок' },
+        { id: 'plan-polish', skill: 'eda-plan-polish', enabled: true, args: '' },
         { id: 'execute', skill: 'eda-plan-execute', enabled: true, args: '' },
         { id: 'polish', skill: 'eda-polish', enabled: true, args: 'limit 5' },
         {
@@ -642,7 +643,7 @@ test('askSettings returns default project settings without an interactive termin
           onFailure: {
             skill: 'eda-fix',
             args: '',
-            then: ['polish', 'manual-test'],
+            then: ['manual-test'],
             maxCycles: 5
           }
         }
@@ -657,6 +658,7 @@ test('askSettings returns default project settings without an interactive termin
     },
     plan: {
       strict: false,
+      metaReview: true,
       size: 'normal',
       decisionMode: 'recommend_and_ask',
       testStrategy: 'ask_each_time',
@@ -716,6 +718,28 @@ test('askSettings asks only for requested sections', async () => {
   assert.equal(settings.aim.mode, 'manual');
 });
 
+test('interactive plan settings can disable subagent meta-review independently', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['plan'],
+    checkboxPrompt: async prompt => {
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['planStrict', 'planMetaReview']);
+      assert.equal(prompt.choices.find(choice => choice.value === 'planMetaReview')?.checked, true);
+      return [];
+    },
+    selectPrompt: async prompt => prompt.default
+  });
+
+  assert.equal(settings.plan.strict, false);
+  assert.equal(settings.plan.metaReview, false);
+});
+
 test('interactive review settings ask mode and per-platform models for enabled checks', async () => {
   const messages = [];
   const reviewAgents = await askReviewAgentSettings({
@@ -751,9 +775,11 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(settings, /^version: 2$/m);
   assert.match(settings, /^orhestra:\n  # Режим полного цикла eda-orhestra\.\n  # automatic \| manual\n  mode: automatic/m);
-  assert.match(settings, /^  steps:\n    - id: plan\n      skill: eda-plan\n      enabled: true/m);
+  assert.match(settings, /^  steps:\n    - id: plan\n      skill: eda-plan\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "без проверок"/m);
+  assert.match(settings, /^    - id: plan-polish\n      skill: eda-plan-polish\n      enabled: true/m);
   assert.match(settings, /^    - id: polish\n      skill: eda-polish\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "limit 5"$/m);
-  assert.match(settings, /^      on_failure:\n        skill: eda-fix\n        args: ""\n        # После исправления[^\n]+\n        then:\n          - polish\n          - manual-test\n        max_cycles: 5$/m);
+  assert.match(settings, /^      on_failure:\n        skill: eda-fix\n        args: ""\n        # После исправления[^\n]+\n        then:\n          - manual-test\n        max_cycles: 5$/m);
+  assert.match(settings, /^  meta_review: true$/m);
   assert.doesNotMatch(settings, /^  qa:/m);
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
@@ -1035,6 +1061,9 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(plan, /plan\.size` \| `normal`, `short`, `ask_each_time`/);
   assert.match(plan, /plan\.decision_mode: recommend_and_ask/);
   assert.match(plan, /plan\.decision_mode` \| `autonomous`, `recommend_and_ask`, `ask_each_time`/);
+  assert.match(plan, /plan\.meta_review: true/);
+  assert.match(plan, /plan\.meta_review` \| `true`, `false`/);
+  assert.match(plan, /`без проверок`.*`plan\.meta_review: false`.*`plan\.strict: false`/s);
 
   const explore = await fs.readFile(skillPath('eda-explore'), 'utf8');
   assert.match(explore, /explore\.decision_mode: recommend_and_ask/);
@@ -1081,7 +1110,7 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   const content = await fs.readFile(skillPath('eda-orhestra'), 'utf8');
 
   assert.match(content, /name: eda-orhestra/);
-  assert.match(content, /`eda-plan` → `eda-plan-execute` → `eda-polish` → `eda-manual-test`/);
+  assert.match(content, /`eda-plan` без проверок → `eda-plan-polish` → `eda-plan-execute` → `eda-polish` → `eda-manual-test`/);
   assert.match(content, /Если `eda-manual-test` вернул `failed`/);
   assert.match(content, /Запусти `on_failure\.skill`/);
   assert.match(content, /выполни активные шаги из `on_failure\.then`/);
@@ -1097,13 +1126,16 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.match(content, /отдельного polish-файла нет/);
   assert.match(content, /Отдельный orchestration-файл не создавай/);
   assert.match(content, /ручные тесты пропущены настройкой/);
-  assert.match(content, /полировка пропущена настройкой/);
+  assert.match(content, /полировка плана пропущена настройкой/);
+  assert.match(content, /полировка кода пропущена настройкой/);
   assert.match(content, /Не разрешай `eda-orhestra`, `eda-aim`, `eda-commit`/);
   assert.match(content, /Каждый активный шаг запускай в отдельном изолированном субагенте/);
   assert.match(content, /`eda-plan`, `eda-plan-polish`, `eda-polish` и `eda-review`/);
   assert.match(content, /свежий контекст без наследования истории текущего диалога/);
   assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
   assert.match(content, /Каждый повтор шага и каждый `on_failure\.skill`/);
+  assert.match(content, /В дефолтной цепочке здесь только `manual-test`/);
+  assert.match(content, /не запускай полировку кода повторно/);
   assert.match(content, /blocked: недоступна изоляция этапа/);
   assert.match(content, /старое значение `steps\[\]\.skill: eda-execute` нормализуй в памяти в `eda-plan-execute`/);
   assert.doesNotMatch(content, /оркестрируй в текущем верхнем контексте/);
