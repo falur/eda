@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import {
-  askPlanReviewAgentSettings,
   askReviewAgentSettings,
   askSettings,
   askTargets,
@@ -779,7 +778,6 @@ test('askSettings returns default project settings without an interactive termin
 
   assert.deepEqual({
     ...settings,
-    planReview: { ...settings.planReview, agents: undefined },
     review: undefined
   }, {
     orhestra: {
@@ -819,11 +817,10 @@ test('askSettings returns default project settings without an interactive termin
       loggingStrategy: 'ask_each_time'
     },
     planReview: {
-      threshold: 95,
-      agents: undefined
+      threshold: 100
     },
     planPolish: {
-      limit: 3
+      limit: 2
     },
     review: undefined,
     sendReview: {
@@ -850,12 +847,6 @@ test('askSettings returns default project settings without an interactive termin
     database: { mode: 'auto', model: { claude: 'opus', codex: 'gpt-5.6-sol' } },
     documentation: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     previous_reviews: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } }
-  });
-  assert.deepEqual(settings.planReview.agents.requirements, {
-    mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' }
-  });
-  assert.deepEqual(settings.planReview.agents.previous, {
-    mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' }
   });
 });
 
@@ -905,25 +896,6 @@ test('interactive plan settings can disable plan-review independently', async ()
   assert.equal(settings.plan.review, false);
 });
 
-test('interactive plan-review settings ask mode and per-platform models', async () => {
-  const messages = [];
-  const agents = await askPlanReviewAgentSettings({
-    input: new PassThrough(),
-    output: new PassThrough(),
-    selectPrompt: async prompt => {
-      messages.push(prompt.message);
-      if (prompt.message === 'Когда запускать plan-review-проверку performance?') return 'off';
-      if (prompt.message === 'Когда запускать plan-review-проверку frontend?') return 'always';
-      return prompt.default;
-    }
-  });
-
-  assert.equal(agents.performance.mode, 'off');
-  assert.equal(messages.includes('Какой моделью Claude проверять performance?'), false);
-  assert.equal(agents.frontend.mode, 'always');
-  assert.equal(messages.filter(message => message.startsWith('Когда запускать plan-review-проверку ')).length, 12);
-});
-
 test('interactive review settings ask mode and per-platform models for enabled checks', async () => {
   const messages = [];
   const reviewAgents = await askReviewAgentSettings({
@@ -967,14 +939,9 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.doesNotMatch(settings, /^  qa:/m);
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
-  assert.match(settings, /^plan-review:\n  # План готов[\s\S]*?^  threshold: 95$/m);
-  assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 3$/m);
-  for (const check of [
-    'requirements', 'rules', 'architecture', 'feasibility', 'execution', 'verification',
-    'api', 'database', 'security', 'frontend', 'performance', 'previous'
-  ]) {
-    assert.match(settings, new RegExp(`^    ${check}:$`, 'm'), `plan-review ${check} must be generated`);
-  }
+  assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
+  assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 2$/m);
+  assert.match(settings, /^plan-review:\n[^\n]*\n[^\n]*\n  threshold: 100\n\nplan-polish:$/m, 'plan-review must not expose agents');
   assert.doesNotMatch(settings, /^review-check:/m);
   assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
   for (const check of [
@@ -1336,7 +1303,7 @@ test('eda-plan schedules business rule documentation before dependent implementa
 
   assert.match(content, /нужный пункт в них отсутствует, описан не полностью или задача расширяет существующее business-правило/);
   assert.match(content, /`Дополнить бизнесовые правила: <конкретная тема и изменение>`/);
-  assert.match(content, /задачи реализации этого поведения должны прямо зависеть от дополнения правил/);
+  assert.match(content, /до соответствующей реализации отдельную фазу или пункт/);
   assert.match(content, /Чисто техническое изменение без изменения целевого поведения этого не требует/);
   assert.match(content, /каждый отсутствующий, неполный или расширяемый пункт целевого поведения покрыт отдельной задачей/);
 });
@@ -1367,7 +1334,6 @@ test('config-aware skills read docs/settings.yaml', async () => {
   const planReview = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
   assert.match(planReview, /version: 3/);
   assert.match(planReview, /plan-review\.threshold/);
-  assert.match(planReview, /plan-review\.agents\.<check>\.mode\/model/);
 
   const planPolish = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
   assert.match(planPolish, /version: 3/);
@@ -1683,18 +1649,17 @@ test('eda-plan final format keeps risks and dependencies inside cohesive single-
 
   assert.doesNotMatch(content, /^## Риски$/m);
   assert.doesNotMatch(content, /^## Порядок выполнения$/m);
-  assert.match(content, /Риски не выносятся в отдельный обязательный раздел/);
-  assert.match(content, /основной поток задаётся номерами фаз, ID задач и их зависимостями/);
-  assert.match(content, /Зависит от: `—`/);
-  assert.match(content, /Одну фазу целиком выполняет один изолированный субагент/);
-  assert.match(content, /слишком крупную или несвязную фазу раздели/);
-  assert.doesNotMatch(content, /Параллельно:/);
+  assert.match(content, /Риски и порядок выполнения отдельными разделами не выносятся/);
+  assert.match(content, /Задач с идентификаторами внутри фаз нет/);
+  assert.match(content, /Порядок фаз задаёт порядок работы/);
+  assert.match(content, /Фаза — это цель, что сделать, результат и проверка/);
+  assert.doesNotMatch(content, /Параллельно:|Зависит от:/);
 });
 
 test('eda-plan writes concrete text without padding', async () => {
   const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
-  assert.match(content, /Пиши конкретно и без воды/);
+  assert.match(content, /План фиксирует решения, границы, контракты и критерии приёмки/);
   assert.match(content, /Если её удаление ничего из этого не меняет, удали её из плана/);
   assert.match(content, /конкретика не равна максимальной подробности/);
   assert.match(content, /не повторять один контракт в нескольких разделах/);
@@ -1721,15 +1686,14 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
   const content = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
 
   assert.match(content, /name: eda-plan-polish/);
-  assert.match(content, /`eda-plan-review` → `eda-plan-review-fix` → повторный `eda-plan-review`/);
-  assert.match(content, /plan-review\.threshold.*default `95`/);
-  assert.match(content, /plan-polish\.limit.*default `3`/);
-  assert.match(content, /Если это последняя разрешённая review-итерация.*fix не запускай/);
-  assert.match(content, /не изменились open\/resolved\/regressed ID и score/);
-  assert.match(content, /один подтверждённый круг без прогресса уже останавливает цикл/);
-  assert.match(content, /Score не повышай и не пересчитывай сам/);
-  assert.match(content, /Примени все открытые находки минимальным изменением плана/);
-  assert.doesNotMatch(content, /apply-optional|required находки|optional|waived/i);
+  assert.match(content, /`eda-plan-review` → `eda-plan-review-fix` → подтверждающий `eda-plan-review`/);
+  assert.match(content, /plan-review\.threshold.*default `100`/);
+  assert.match(content, /plan-polish\.limit.*default `2`/);
+  assert.match(content, /fix не запускай, перепроверить его будет нечем/);
+  assert.match(content, /score не вырос относительно предыдущей — останови цикл/);
+  assert.match(content, /восстанови лучшую версию/);
+  assert.match(content, /Score сам не считай и не корректируй/);
+  assert.match(content, /Оставлять последнюю версию, если лучшая была раньше/);
   assert.match(content, /Запускать кросс-CLI, `strict`, `codex exec` или `claude -p`/);
   assert.match(content, /менять код или запускать проверки проекта/);
 });
@@ -1789,61 +1753,21 @@ test('eda-review roles live in packaged agents with structured contracts', async
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
 });
 
-test('eda-plan-review roles live in read-only packaged agents with structured contracts', async () => {
-  const expected = [
-    ['requirements', 'sonnet', 'gpt-5.6-terra'],
-    ['rules', 'haiku', 'gpt-5.6-luna'],
-    ['architecture', 'opus', 'gpt-5.6-sol'],
-    ['feasibility', 'opus', 'gpt-5.6-sol'],
-    ['execution', 'sonnet', 'gpt-5.6-terra'],
-    ['verification', 'sonnet', 'gpt-5.6-terra'],
-    ['api', 'sonnet', 'gpt-5.6-terra'],
-    ['database', 'opus', 'gpt-5.6-sol'],
-    ['security', 'opus', 'gpt-5.6-sol'],
-    ['frontend', 'sonnet', 'gpt-5.6-terra'],
-    ['performance', 'opus', 'gpt-5.6-sol'],
-    ['previous', 'haiku', 'gpt-5.6-luna']
-  ];
-
-  for (const [role, claude, codex] of expected) {
-    const dir = path.join(AGENTS_SRC, `eda-plan-review-${role}`);
-    const config = JSON.parse(await fs.readFile(path.join(dir, 'agent.json'), 'utf8'));
-    const prompt = await fs.readFile(path.join(dir, 'prompt.md'), 'utf8');
-    assert.equal(config.name, `eda-plan-review-${role}`);
-    assert.equal(config.models.claude, claude);
-    assert.equal(config.models.codex, codex);
-    assert.equal(config.access, 'read-only');
-    assert.match(prompt, /Верни один YAML-блок/);
-    assert.match(prompt, /status: completed \| not_applicable \| blocked/);
-    assert.match(prompt, /предыдущие_находки:/);
-    assert.match(prompt, /не выставляй score/i);
-    assert.doesNotMatch(prompt, /recommendation: required \| optional/);
-    assert.doesNotMatch(prompt, /apply-optional/);
-    if (role === 'previous') {
-      assert.match(prompt, /resolved \| still_open \| regressed/);
-      assert.doesNotMatch(prompt, /waived/);
-    } else {
-      assert.match(prompt, /обязательно нужно исправить|Проверь конкретность и плотность плана/);
-      assert.match(prompt, /можно безопасно проигнорировать|Не проси расширять текст/);
-    }
-  }
-});
-
 test('eda-plan-review использует один обязательный класс находок и score gate', async () => {
   const review = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
   const fix = await fs.readFile(skillPath('eda-plan-review-fix'), 'utf8');
 
-  assert.match(review, /Если замечание можно без последствий не применять, это не находка/);
-  assert.match(review, /Недостаток конкретики подтверждён только когда исполнителю придётся заново исследовать область/);
-  assert.match(review, /Вода или повтор подтверждены/);
-  assert.match(review, /Любая открытая находка даёт `changes-required`, независимо от score/);
-  assert.match(review, /при отсутствии открытых находок score равен `100`/);
-  assert.doesNotMatch(review, /Recommendation|required\/optional|Optional open|Required open|waived/);
+  assert.match(review, /Проверяй только пункты списка/);
+  assert.match(review, /список — это и есть определение готовности/);
+  assert.match(review, /score     = round\(100 \* закрыто \/ всего\)/);
+  assert.match(review, /Score не выставляй экспертно и не корректируй вручную/);
+  assert.match(review, /Не запускай субагентов/);
+  assert.doesNotMatch(review, /eda-plan-review-<check>|усредняй score/);
 
-  assert.match(fix, /Каждая находка в итоговом review требует исправления/);
-  assert.match(fix, /Примени все открытые находки одним связным минимальным изменением плана/);
-  assert.match(fix, /Сначала удаляй лишнее или заменяй существующую формулировку/);
-  assert.doesNotMatch(fix, /apply-optional|required находки|all required|optional|waived/i);
+  assert.match(fix, /Закрой каждый пункт со статусом `fail`/);
+  assert.match(fix, /\*\*План не растёт\.\*\*/);
+  assert.match(fix, /Прирост объёма за один fix не больше 3%/);
+  assert.doesNotMatch(fix, /PR-NNN|Зависит от/);
 });
 
 test('eda-review-business checks applicable business rules without replacing task intent', async () => {
@@ -2145,7 +2069,7 @@ test('eda-plan-execute delegates whole phases, fixes, and checks while managing 
   assert.match(content, /Основной агент пишет только этот журнал и отметки прогресса в плане/);
   assert.match(content, /Самому менять код, тесты, миграции, конфиги, зависимости или проектную документацию/);
   assert.match(content, /Самому запускать тесты, линтеры, typecheck, сборку, миграции, серверы/);
-  assert.match(content, /следующую фазу, пока исполнитель текущей не завершил все её задачи и отдельная проверка фазы не прошла/);
+  assert.match(content, /Не запускай следующую, пока текущая не выполнена и её отдельная проверка не прошла/);
   assert.match(content, /нового субагента для полного набора тестов/);
   assert.match(content, /blocked: недоступно изолированное выполнение/);
   assert.match(content, /blocked: выполнение не сходится/);

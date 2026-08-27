@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "name": "eda-plan-review-security",
-  "description": "Проверяет auth, permissions, внешний ввод, секреты и чувствительные данные в плане.",
-  "models": { "claude": "opus", "codex": "gpt-5.6-sol" },
-  "reasoning": { "claude": "high", "codex": "high" },
-  "access": "read-only",
-  "maxTurns": 30
-}

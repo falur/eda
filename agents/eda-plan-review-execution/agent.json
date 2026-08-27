@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "name": "eda-plan-review-execution",
-  "description": "Проверяет конкретность и плотность плана, связность фаз, ID, зависимости и исполнимость одним агентом на фазу.",
-  "models": { "claude": "sonnet", "codex": "gpt-5.6-terra" },
-  "reasoning": { "claude": "medium", "codex": "medium" },
-  "access": "read-only",
-  "maxTurns": 30
-}

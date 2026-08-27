@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "name": "eda-plan-review-previous",
-  "description": "Проверяет закрытие находок предыдущей связанной итерации plan-review.",
-  "models": { "claude": "haiku", "codex": "gpt-5.6-luna" },
-  "reasoning": { "claude": "low", "codex": "low" },
-  "access": "read-only",
-  "maxTurns": 30
-}

@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "name": "eda-plan-review-database",
-  "description": "Проверяет данные, миграции, индексы, транзакции, backfill и rollback в плане.",
-  "models": { "claude": "opus", "codex": "gpt-5.6-sol" },
-  "reasoning": { "claude": "high", "codex": "high" },
-  "access": "read-only",
-  "maxTurns": 30
-}
