@@ -120,7 +120,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '3.1.0');
+    assert.equal(manifest.packageVersion, '3.1.1');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
