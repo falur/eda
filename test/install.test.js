@@ -1331,6 +1331,16 @@ test('workflow skills select only applicable project business cards after task s
   assert.match(execute, /у старого плана без поля выбирает через `docs\/business\.md`/);
 });
 
+test('eda-plan schedules business rule documentation before dependent implementation', async () => {
+  const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
+
+  assert.match(content, /нужный пункт в них отсутствует, описан не полностью или задача расширяет существующее business-правило/);
+  assert.match(content, /`Дополнить бизнесовые правила: <конкретная тема и изменение>`/);
+  assert.match(content, /задачи реализации этого поведения должны прямо зависеть от дополнения правил/);
+  assert.match(content, /Чисто техническое изменение без изменения целевого поведения этого не требует/);
+  assert.match(content, /каждый отсутствующий, неполный или расширяемый пункт целевого поведения покрыт отдельной задачей/);
+});
+
 test('config-aware skills read docs/settings.yaml', async () => {
   const strictSkills = new Map([
     ['eda-explore', 'explore'],
