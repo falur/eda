@@ -26,6 +26,21 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_SRC = path.join(ROOT, 'skills');
 const AGENTS_SRC = path.join(ROOT, 'agents');
+const ARTIFACT_DIRECTORY_NAMES = [
+  'aims',
+  'automations',
+  'executions',
+  'fixes',
+  'manual-tests',
+  'plan-review-fixes',
+  'plan-reviews',
+  'plans',
+  'project-starts',
+  'researches',
+  'review-fixes',
+  'reviews',
+  'roadmaps'
+];
 
 function silentOutput() {
   const output = new PassThrough();
@@ -106,7 +121,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '2.1.0');
+    assert.equal(manifest.packageVersion, '3.0.0');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -189,6 +204,111 @@ test('update is idempotent for skills, agents, and manifests', async () => {
   assert.match(stdout, /Обновлено 0 агентов\./);
   assert.match(stdout, /Claude Code: .*\(скилы: 0 скилов, агенты: 0 агентов\)/);
   assert.match(stdout, /Codex CLI: .*\(скилы: 0 скилов, агенты: 0 агентов\)/);
+});
+
+test('update migrates every legacy artifact directory without rewriting file contents', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-artifacts-migration-'));
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs/business'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs/references'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs/custom'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/rules.md'), 'rules');
+  await fs.writeFile(path.join(cwd, 'docs/arch.md'), 'arch');
+  await fs.writeFile(path.join(cwd, 'docs/business.md'), 'business index');
+  await fs.writeFile(path.join(cwd, 'docs/business/card.md'), 'business card');
+  await fs.writeFile(path.join(cwd, 'docs/references.md'), 'references index');
+  await fs.writeFile(path.join(cwd, 'docs/references/card.md'), 'reference card');
+  await fs.writeFile(path.join(cwd, 'docs/custom/keep.md'), 'custom');
+
+  const contents = new Map();
+  for (const directoryName of ARTIFACT_DIRECTORY_NAMES) {
+    const content = directoryName === 'plans'
+      ? 'source: docs/researches/legacy.md\n'
+      : `${directoryName}\n`;
+    contents.set(directoryName, content);
+    await fs.mkdir(path.join(cwd, 'docs', directoryName, 'nested'), { recursive: true });
+    await fs.writeFile(path.join(cwd, 'docs', directoryName, 'nested', 'artifact.md'), content);
+  }
+  const screenshot = Buffer.from([0, 1, 2, 127, 128, 255]);
+  await fs.mkdir(path.join(cwd, 'docs/manual-tests/assets'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/manual-tests/assets/screenshot.bin'), screenshot);
+
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  await update({ cwd, output });
+
+  for (const directoryName of ARTIFACT_DIRECTORY_NAMES) {
+    await assert.rejects(
+      fs.lstat(path.join(cwd, 'docs', directoryName)),
+      err => err?.code === 'ENOENT'
+    );
+    assert.equal(
+      await fs.readFile(path.join(cwd, 'docs/artifacts', directoryName, 'nested/artifact.md'), 'utf8'),
+      contents.get(directoryName)
+    );
+  }
+  assert.deepEqual(
+    await fs.readFile(path.join(cwd, 'docs/artifacts/manual-tests/assets/screenshot.bin')),
+    screenshot
+  );
+  assert.equal(
+    await fs.readFile(path.join(cwd, 'docs/artifacts/plans/nested/artifact.md'), 'utf8'),
+    'source: docs/researches/legacy.md\n'
+  );
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/rules.md'), 'utf8'), 'rules');
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/arch.md'), 'utf8'), 'arch');
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/business/card.md'), 'utf8'), 'business card');
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/references/card.md'), 'utf8'), 'reference card');
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/custom/keep.md'), 'utf8'), 'custom');
+
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Артефакты перенесены в docs\/artifacts\/: каталогов 13, файлов перемещено 14, конфликтующих старых файлов удалено 0\./);
+});
+
+test('update keeps new artifact files on conflicts and is idempotent', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-artifacts-conflicts-'));
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs/plans'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs/artifacts/plans'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/plans/conflict.md'), 'legacy');
+  await fs.writeFile(path.join(cwd, 'docs/plans/moved.md'), 'move me');
+  await fs.writeFile(path.join(cwd, 'docs/artifacts/plans/conflict.md'), 'current');
+  await fs.writeFile(path.join(cwd, 'docs/artifacts/plans/current.md'), 'keep me');
+
+  const firstOutput = new PassThrough();
+  const firstChunks = [];
+  firstOutput.on('data', chunk => firstChunks.push(chunk));
+  await update({ cwd, output: firstOutput });
+
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/artifacts/plans/conflict.md'), 'utf8'), 'current');
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/artifacts/plans/moved.md'), 'utf8'), 'move me');
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/artifacts/plans/current.md'), 'utf8'), 'keep me');
+  await assert.rejects(fs.lstat(path.join(cwd, 'docs/plans')), err => err?.code === 'ENOENT');
+  assert.match(
+    Buffer.concat(firstChunks).toString('utf8'),
+    /каталогов 1, файлов перемещено 1, конфликтующих старых файлов удалено 1/
+  );
+
+  const secondOutput = new PassThrough();
+  const secondChunks = [];
+  secondOutput.on('data', chunk => secondChunks.push(chunk));
+  await update({ cwd, output: secondOutput });
+  assert.doesNotMatch(Buffer.concat(secondChunks).toString('utf8'), /Артефакты перенесены/);
+});
+
+test('init does not migrate legacy artifact directories', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-artifacts-init-'));
+  await fs.mkdir(path.join(cwd, 'docs/plans'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/plans/legacy.md'), 'legacy plan');
+
+  await init({ cwd, output: silentOutput() });
+
+  assert.equal(await fs.readFile(path.join(cwd, 'docs/plans/legacy.md'), 'utf8'), 'legacy plan');
+  await assert.rejects(
+    fs.lstat(path.join(cwd, 'docs/artifacts/plans')),
+    err => err?.code === 'ENOENT'
+  );
 });
 
 test('init prints installed skills count', async () => {
@@ -370,6 +490,36 @@ test('updateAll skip migrates old settings and creates defaults only when missin
   assert.equal(stdout.match(/Старый или неполный файл настроек перенесён на version: 3: docs\/settings\.yaml/g)?.length, 1);
   assert.equal(stdout.match(/Создан файл настроек с defaults: docs\/settings\.yaml/g)?.length, 1);
   assert.doesNotMatch(stdout, /Какие настройки включить|Настройки будут запрошены/);
+});
+
+test('updateAll migrates artifacts independently and continues after a project migration error', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-artifacts-'));
+  const goodProject = path.join(root, 'good');
+  const badProject = path.join(root, 'bad');
+
+  for (const project of [goodProject, badProject]) {
+    await fs.mkdir(path.join(project, '.codex/skills/eda-plan'), { recursive: true });
+    await fs.writeFile(path.join(project, '.codex/skills/eda-plan/SKILL.md'), 'old plan');
+  }
+  await fs.mkdir(path.join(goodProject, 'docs/reviews'), { recursive: true });
+  await fs.writeFile(path.join(goodProject, 'docs/reviews/review.md'), 'review');
+  await fs.mkdir(path.join(badProject, 'docs/plans'), { recursive: true });
+  await fs.writeFile(path.join(badProject, 'docs/plans/plan.md'), 'plan');
+  await fs.mkdir(path.join(badProject, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(badProject, 'docs/artifacts'), 'not a directory');
+
+  const result = await updateAll({ root, output: silentOutput(), settingsMode: 'skip' });
+
+  assert.deepEqual(result.updatedProjects.map(project => project.path), [goodProject]);
+  assert.equal(result.failedProjects.length, 1);
+  assert.equal(result.failedProjects[0].path, badProject);
+  assert.match(result.failedProjects[0].error.message, /Ожидался каталог артефактов/);
+  assert.equal(
+    await fs.readFile(path.join(goodProject, 'docs/artifacts/reviews/review.md'), 'utf8'),
+    'review'
+  );
+  await assert.rejects(fs.lstat(path.join(goodProject, 'docs/reviews')), err => err?.code === 'ENOENT');
+  assert.equal(await fs.readFile(path.join(badProject, 'docs/plans/plan.md'), 'utf8'), 'plan');
 });
 
 test('cli update-all updates projects from provided directory', async () => {
@@ -1089,7 +1239,7 @@ test('eda-prepare-ai keeps rules, architecture, references, and agent entrypoint
   assert.match(content, /Перед удалением карточки.*запроси подтверждение/);
   assert.match(content, /Сделай `AGENTS\.md` короткой входной картой/);
   assert.match(content, /Прочитай `AGENTS\.md` и следуй всем инструкциям в нём/);
-  assert.match(content, /Если вызов пришёл из `eda-new-project`, прочитай переданный `docs\/project-starts\/\*\.md`/);
+  assert.match(content, /Если вызов пришёл из `eda-new-project`, прочитай переданный `docs\/artifacts\/project-starts\/\*\.md`/);
   assert.match(content, /не требуй от стартового документа готовой архитектуры, правил, матрицы проверок или AI\/MCP-рекомендаций/i);
   assert.match(content, /считай это полным bootstrap-вызовом/);
   assert.match(content, /Решить архитектурные развилки/);
@@ -1256,6 +1406,37 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(aim, /Прямое указание режима в текущем сообщении всегда важнее настройки/);
 });
 
+test('packaged skills and agents use only the version 3 artifact layout', async () => {
+  const legacyArtifactPath = new RegExp(
+    `docs/(?:${ARTIFACT_DIRECTORY_NAMES.join('|')})/`
+  );
+  const files = [];
+
+  for (const skillName of await listSkillNames()) {
+    files.push(skillPath(skillName));
+  }
+  for (const agentName of await listAgentNames()) {
+    files.push(path.join(AGENTS_SRC, agentName, 'prompt.md'));
+    files.push(path.join(AGENTS_SRC, agentName, 'agent.json'));
+  }
+
+  for (const file of files) {
+    const content = await fs.readFile(file, 'utf8');
+    assert.doesNotMatch(content, legacyArtifactPath, `${path.relative(ROOT, file)} must not use legacy artifact paths`);
+  }
+
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const review = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const aimPlanner = await fs.readFile(path.join(AGENTS_SRC, 'eda-aim-planner/prompt.md'), 'utf8');
+  assert.match(plan, /docs\/artifacts\/plans\//);
+  assert.match(review, /docs\/artifacts\/reviews\//);
+  assert.match(aimPlanner, /docs\/artifacts\/aims\//);
+  assert.match(plan, /docs\/rules\.md/);
+  assert.match(plan, /docs\/arch\.md/);
+  assert.match(plan, /docs\/business\.md/);
+  assert.match(plan, /docs\/references\.md/);
+});
+
 test('eda-orhestra orchestrates the full automatic and manual workflow', async () => {
   const content = await fs.readFile(skillPath('eda-orhestra'), 'utf8');
 
@@ -1354,7 +1535,7 @@ test('eda-review reviews without a plan when none is specified and never asks fo
   assert.match(review, /без аргументов/);
   assert.match(review, /Вопрос о плане не задавай/);
   assert.match(review, /\$PLAN_FILE=none/);
-  assert.match(review, /plan: <docs\/plans\/\.\.\. \| none>/);
+  assert.match(review, /plan: <docs\/artifacts\/plans\/\.\.\. \| none>/);
   assert.match(review, /`plan_alignment` включай только при непустом `\$PLAN_FILE`/);
   assert.match(review, /Проверка плана пропущена: план не указан и не найден/);
 });
@@ -1438,7 +1619,7 @@ test('eda-aim delegates agreement, execution, and independent verification', asy
   ];
 
   assert.match(content, /name: eda-aim/);
-  assert.match(content, /docs\/aims\/\{YYYY-MM-DD\}_\{HH-MM\}_\{slug\}\.md/);
+  assert.match(content, /docs\/artifacts\/aims\/\{YYYY-MM-DD\}_\{HH-MM\}_\{slug\}\.md/);
   assert.match(content, /Подтверждение точного списка новых целей — отдельный обязательный вопрос человеку/);
   assert.match(content, /В автоматическом режиме не спрашивай пользователя/);
   assert.match(content, /без явного режима → `\$MODE=aim\.mode`/);
@@ -1707,7 +1888,7 @@ test('eda-plan treats project rules and architecture as mandatory planning frame
 test('eda-roadmap creates non-implementation task roadmaps', async () => {
   const content = await fs.readFile(skillPath('eda-roadmap'), 'utf8');
 
-  assert.match(content, /docs\/roadmaps/);
+  assert.match(content, /docs\/artifacts\/roadmaps/);
   assert.match(content, /## Задачи/);
   assert.match(content, /Аутентификация через email, ВК и Яндекс/);
   assert.match(content, /Roadmap — не план реализации/);
@@ -1719,7 +1900,7 @@ test('eda-new-project captures collaborative project-start decisions', async () 
   const content = await fs.readFile(skillPath('eda-new-project'), 'utf8');
 
   assert.match(content, /name: eda-new-project/);
-  assert.match(content, /docs\/project-starts/);
+  assert.match(content, /docs\/artifacts\/project-starts/);
   assert.match(content, /Собрать требования/);
   assert.match(content, /Зафиксировать архитектурные драйверы/);
   assert.match(content, /Выбрать основной стек/);
@@ -1850,7 +2031,7 @@ test('readme lists packaged workflow skills', async () => {
   assert.match(content, /`eda-plan-review`/);
   assert.match(content, /`eda-plan-review-fix`/);
   assert.match(content, /`eda-manual-test`/);
-  assert.match(content, /docs\/manual-tests/);
+  assert.match(content, /docs\/artifacts\/manual-tests/);
   assert.match(content, /`eda-worktree`/);
   assert.match(content, /`eda-merge-worktree`/);
   assert.match(content, /`eda-review-frontend`/);
@@ -1885,7 +2066,7 @@ test('eda-manual-test documents manual API and frontend smoke checks', async () 
   const content = await fs.readFile(skillPath('eda-manual-test'), 'utf8');
 
   assert.match(content, /name: eda-manual-test/);
-  assert.match(content, /docs\/manual-tests/);
+  assert.match(content, /docs\/artifacts\/manual-tests/);
   assert.match(content, /curl/);
   assert.match(content, /Playwright/);
   assert.match(content, /browser automation/);

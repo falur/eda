@@ -1,16 +1,16 @@
-# Миграция на eda 2.0
+# Миграция на eda 3.0
 
-Версия 2.0 заменяет широкие итерации проверки планов специализированным workflow `eda-plan-review` → `eda-plan-review-fix` и переводит `docs/settings.yaml` на `version: 3`.
+Версия 3.0 переносит все рабочие результаты скилов в `docs/artifacts/`. Постоянная документация проекта остаётся непосредственно в `docs/`.
 
 ## Обновление
 
 ```bash
-npm install -g @gian-tiaga/eda@2
+npm install -g @gian-tiaga/eda@3
 eda --version
 eda update
 ```
 
-Версия CLI должна начинаться с `2.0`. После обновления перезапусти Claude Code или Codex CLI, чтобы среда перечитала новые скилы и агентов.
+Версия CLI должна начинаться с `3.0`. После обновления перезапусти Claude Code или Codex CLI, чтобы среда перечитала новые скилы и агентов.
 
 Для нескольких проектов:
 
@@ -18,82 +18,71 @@ eda update
 eda update-all /path/to/projects
 ```
 
-`configure` один раз спрашивает общий профиль v3 и записывает его во все проекты. `skip` сохраняет полный v3, но старые, неизвестные и неполные конфиги индивидуально переносит; отсутствующие значения получает из defaults. В non-TTY используется `skip`.
+`eda init` устанавливает новую версию компонентов, но не переносит старые артефакты. Для существующего проекта используй `eda update`.
 
-## Что изменилось
+## Новая структура
 
-- Добавлены `eda-plan-review` и `eda-plan-review-fix`.
-- Добавлены 12 read-only агентов `eda-plan-review-*` с отдельными зонами ответственности.
-- `eda-plan-polish` теперь оркестрирует review/fix и по умолчанию ограничен тремя подтверждающими review-итерациями.
-- Готовность требует одновременно отсутствия открытых находок и достижения threshold; любая находка блокирует `ready` независимо от score.
-- У находок нет деления на required/optional: ревью сохраняет только доказанные ошибки и существенные неточности, которые обязательно исправить. ID и SHA-256 цепочка остаются стабильными.
-- `eda-plan-review-fix` применяет все находки минимальным изменением плана, а `eda-plan` по `plan.review: true` запускает полный подтверждающий цикл `eda-plan-polish`.
-- Обычный `eda-review` также больше не делит замечания на required/optional: сохраняются только доказанные дефекты, которые обязательно исправить. Любая находка даёт `result: changes-required`; `clean` возможен только без находок.
-- `eda-fix-by-review` применяет все находки без режима `apply-optional`, а `eda-polish` подтверждает результат повторным ревью до `clean` и threshold.
-- `eda-plan-polish strict` и `plan-polish.strict` удалены. `plan.strict` для кросс-CLI проверки самого `eda-plan` остаётся.
-- npm-пакет использует `yaml` для безопасного переноса вложенного конфига.
+Из управляемых eda файлов в корне `docs/` остаются постоянные документы:
 
-## Умный перенос settings v3
-
-Установщик разбирает старый файл как YAML, переносит валидные известные значения и спрашивает только отсутствующие в интерактивном терминале. После этого файл целиком атомарно записывается в нормализованном формате v3. Без TTY недостающие значения заменяются defaults.
-
-Основные соответствия:
-
-| Старое поле | Новое поле |
-|---|---|
-| `version: 1` или `version: 2` | `version: 3` |
-| `plan.meta_review` | `plan.review` |
-| `plan-polish.strict` | удалено |
-| отсутствует | `plan-review.threshold: 95` |
-| отсутствует | `plan-review.agents.*` |
-| отсутствует | `plan-polish.limit: 3` |
-| `defaults.strict` из v1 | `explore.strict`, `plan.strict` |
-| `defaults.plan_size` из v1 | `plan.size` |
-| `defaults.decision_mode` из v1 | `explore.decision_mode`, `plan.decision_mode` |
-| `automate.include_plans` из v1/v2 | `discover-automations.include_plans` |
-
-Также сохраняются валидные `orhestra.steps`, `aim`, `explore`, остальные поля `plan`, `review.agents`, `send-review` и `discover-automations`. Неизвестные пользовательские поля не входят в v3 и после нормализации удаляются.
-
-## Новый plan-review профиль
-
-```yaml
-version: 3
-
-plan:
-  strict: false
-  review: true
-  size: normal
-  decision_mode: recommend_and_ask
-  test_strategy: ask_each_time
-  logging_strategy: ask_each_time
-
-plan-review:
-  threshold: 95
-  agents:
-    requirements:
-      mode: always
-      model:
-        claude: sonnet
-        codex: gpt-5.6-terra
-    architecture:
-      mode: always
-      model:
-        claude: opus
-        codex: gpt-5.6-sol
-
-plan-polish:
-  limit: 3
+```text
+docs/
+├── settings.yaml
+├── rules.md
+├── arch.md
+├── business.md
+├── business/
+├── references.md
+├── references/
+└── artifacts/
 ```
 
-Полный профиль со всеми агентами создаётся установщиком и приведён в README.
+Рабочие каталоги получают общий префикс `docs/artifacts/`:
+
+| До 3.0 | Начиная с 3.0 |
+|---|---|
+| `docs/aims/` | `docs/artifacts/aims/` |
+| `docs/automations/` | `docs/artifacts/automations/` |
+| `docs/executions/` | `docs/artifacts/executions/` |
+| `docs/fixes/` | `docs/artifacts/fixes/` |
+| `docs/manual-tests/` | `docs/artifacts/manual-tests/` |
+| `docs/plan-review-fixes/` | `docs/artifacts/plan-review-fixes/` |
+| `docs/plan-reviews/` | `docs/artifacts/plan-reviews/` |
+| `docs/plans/` | `docs/artifacts/plans/` |
+| `docs/project-starts/` | `docs/artifacts/project-starts/` |
+| `docs/researches/` | `docs/artifacts/researches/` |
+| `docs/review-fixes/` | `docs/artifacts/review-fixes/` |
+| `docs/reviews/` | `docs/artifacts/reviews/` |
+| `docs/roadmaps/` | `docs/artifacts/roadmaps/` |
+
+## Автоматический перенос
+
+`eda update` и `eda update-all` перед обновлением настроек и компонентов рекурсивно объединяют каждый старый каталог с соответствующим каталогом в `docs/artifacts/`.
+
+- Неконфликтующие файлы и вложенные каталоги перемещаются.
+- Если одинаковый относительный путь уже существует в `docs/artifacts/`, новый объект сохраняется, а старый удаляется.
+- Содержимое файлов не переписывается, поэтому SHA-256 планов и ревью не меняется.
+- Старые пути, записанные внутри исторических Markdown-файлов, остаются текстом как есть и могут больше не открываться.
+- Неизвестные пользовательские файлы и каталоги в `docs/` не переносятся и не удаляются.
+- Повторный запуск безопасен: при отсутствии старых каталогов перенос ничего не меняет.
+
+После обновления скилы работают только с путями внутри `docs/artifacts/`. Fallback на старые каталоги и path aliases не поддерживаются.
+
+## Настройки
+
+Версия npm-пакета и версия схемы настроек независимы: в eda 3.0 актуальным остаётся `docs/settings.yaml` с `version: 3`.
+
+Установщик по-прежнему сохраняет полный валидный v3 байт-в-байт. Старый, неизвестный или неполный YAML нормализуется: известные валидные значения переносятся, а отсутствующие спрашиваются в TTY или получают defaults без TTY.
+
+В `eda update-all` режим `configure` один раз спрашивает общий профиль v3 и записывает его во все проекты. Режим `skip` сохраняет полный v3, индивидуально переносит остальные конфиги и создаёт defaults только при отсутствии файла.
 
 ## Проверка миграции
 
 После `eda update` проверь:
 
-- `docs/settings.yaml` содержит `version: 3`, `plan.review`, `plan-review.agents` и `plan-polish.limit`;
-- в `.claude/agents/` или `.codex/agents/` установлены `eda-plan-review-*`;
-- старые ссылки на `plan.meta_review` и `eda-plan-polish strict` удалены из локальных workflow;
-- `git status` показывает только ожидаемую нормализацию настроек и обновление управляемых компонентов.
+- старые рабочие каталоги исчезли из `docs/`, а файлы находятся в `docs/artifacts/`;
+- `docs/business.md`, `docs/business/`, `docs/references.md`, `docs/references/`, `docs/arch.md` и `docs/rules.md` остались на месте;
+- `docs/settings.yaml` содержит `version: 3`;
+- `eda --version` выводит версию `3.0.x`;
+- в `.claude/` или `.codex/` установлены обновлённые скилы и агенты.
 
 Установщик не создаёт и не перезаписывает корневой `AGENTS.md` пользовательского проекта и не удаляет чужие skills/agents.

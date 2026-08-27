@@ -138,12 +138,12 @@ REVIEW_CONTEXT: <краткий общий контекст>
 
 ## Сохранить ревью
 
-Создай файл `docs/reviews/{YYYY-MM-DD}_{HH-MM}_{slug}.md` только после успешной обработки всех обязательных агентов. Для недоступного `previous_reviews` используй `status: reviewed-with-warnings`, иначе `status: reviewed`.
+Создай файл `docs/artifacts/reviews/{YYYY-MM-DD}_{HH-MM}_{slug}.md` только после успешной обработки всех обязательных агентов. Для недоступного `previous_reviews` используй `status: reviewed-with-warnings`, иначе `status: reviewed`.
 
 ```markdown
 ---
 target: <что проверено>
-plan: <docs/plans/... | none>
+plan: <docs/artifacts/plans/... | none>
 score: <0..100>
 status: <reviewed | reviewed-with-warnings>
 result: <clean | changes-required>

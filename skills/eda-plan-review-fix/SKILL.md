@@ -5,7 +5,7 @@ description: 'Исправляет готовый план по всем нах�
 
 # Скил: Исправитель плана по ревью (eda-plan-review-fix)
 
-Применяй подтверждённые находки из `docs/plan-reviews/` только к связанному плану. Не делай новое ревью: твой контракт — точечно изменить основные разделы плана и сохранить проверяемую цепочку SHA-256.
+Применяй подтверждённые находки из `docs/artifacts/plan-reviews/` только к связанному плану. Не делай новое ревью: твой контракт — точечно изменить основные разделы плана и сохранить проверяемую цепочку SHA-256.
 
 ## Вход из сообщения пользователя
 
@@ -19,7 +19,7 @@ description: 'Исправляет готовый план по всем нах�
 
 ## Правила
 
-1. Работай только с review из `docs/plan-reviews/` и его `plan` из `docs/plans/`.
+1. Работай только с review из `docs/artifacts/plan-reviews/` и его `plan` из `docs/artifacts/plans/`.
 2. Вычисли SHA-256 текущего плана до правок. Он обязан совпадать с `plan_sha256` review. При несовпадении остановись: review устарел, нужен новый `eda-plan-review`.
 3. Перед правкой прочитай план, `docs/rules.md`, `docs/arch.md`, только применимые `sources.business`, `sources.references` и `sources.research`.
 4. Не переоценивай находки и не создавай новые. Каждая находка в итоговом review требует исправления. Если находка недоказана, противоречит контексту или непонятна, остановись и попроси повторное review либо решение пользователя.
@@ -46,12 +46,12 @@ description: 'Исправляет готовый план по всем нах�
 
 ## Сохранить fix-отчёт
 
-Создай `docs/plan-review-fixes/{YYYY-MM-DD}_{HH-MM}_{slug}.md`:
+Создай `docs/artifacts/plan-review-fixes/{YYYY-MM-DD}_{HH-MM}_{slug}.md`:
 
 ```markdown
 ---
-review: <docs/plan-reviews/...>
-plan: <docs/plans/...>
+review: <docs/artifacts/plan-reviews/...>
+plan: <docs/artifacts/plans/...>
 before_sha256: <sha256 из review>
 after_sha256: <sha256 после изменения>
 status: done
