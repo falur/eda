@@ -1370,7 +1370,7 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(orhestra, /orhestra\.mode: automatic/);
   assert.match(orhestra, /`automatic` или `manual`/);
   assert.match(orhestra, /orhestra\.steps/);
-  assert.match(orhestra, /`eda-polish`.*`threshold N`.*`limit N`/s);
+  assert.match(orhestra, /`eda-polish`.*`limit N`/s);
   assert.match(orhestra, /`args`/);
   assert.match(orhestra, /on_failure\.then/);
 
@@ -1537,6 +1537,27 @@ test('eda-review сохраняет только конкретные наход
   assert.match(content, /при любой находке используй `result: changes-required` независимо от score/);
   assert.doesNotMatch(content, /recommendation: required \| optional/);
   assert.doesNotMatch(content, /На усмотрение автора/);
+});
+
+test('eda-review отклоняет находки про будущее и фиксирует отклонённые', async () => {
+  const content = await fs.readFile(skillPath('eda-review'), 'utf8');
+
+  assert.match(content, /Отклони находку про будущее: дефект должен существовать в текущем коде/);
+  assert.match(content, /способа воспроизведения \(`repro`\)/);
+  assert.match(content, /Каждую отклонённую находку запиши в раздел «Отклонено»/);
+  assert.match(content, /## Отклонено/);
+  assert.match(content, /\*\*Чем воспроизводится:\*\*/);
+  assert.match(content, /не принимай эти находки повторно без нового доказательства/);
+  assert.doesNotMatch(content, /по серьёзности, вероятности, влиянию/);
+});
+
+test('eda-fix-by-review может отклонить только фактически неверную находку', async () => {
+  const content = await fs.readFile(skillPath('eda-fix-by-review'), 'utf8');
+
+  assert.match(content, /Отклонить находку можно, только если она фактически неверна/);
+  assert.match(content, /Трудоёмкость, вкус и несогласие с формулировкой основанием не являются/);
+  assert.match(content, /## Отклонённые находки/);
+  assert.match(content, /сколько находок применено и сколько отклонено/);
 });
 
 test('eda-plan no longer requires a research selection question by default', async () => {
@@ -1747,6 +1768,9 @@ test('eda-review roles live in packaged agents with structured contracts', async
     assert.match(prompt, /находки:/);
     assert.match(prompt, /evidence:/);
     assert.match(prompt, /Добавляй находку только для конкретной доказанной проблемы, которую обязательно исправить/);
+    assert.match(prompt, /Находка описывает дефект, который есть в коде сейчас/);
+    assert.match(prompt, /«Сломается, если позже кто-то так сделает» без достижимого сценария — не находка/);
+    assert.match(prompt, /^    repro: /m);
     assert.doesNotMatch(prompt, /recommendation:/);
   }
 
@@ -1956,7 +1980,7 @@ test('readme lists packaged workflow skills', async () => {
   assert.match(content, /`eda-orhestra`/);
   assert.match(content, /orhestra\.steps/);
   assert.match(content, /args: "limit 5"/);
-  assert.match(content, /args: "threshold 90 limit 2"/);
+  assert.match(content, /args: "limit 2"/);
   assert.match(content, /без полировки/);
   assert.match(content, /`eda-new-project`/);
   assert.match(content, /`eda-business`/);
@@ -2021,17 +2045,19 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   const content = await fs.readFile(skillPath('eda-polish'), 'utf8');
 
   assert.match(content, /name: eda-polish/);
-  assert.match(content, /Порог по умолчанию — `95`/);
-  assert.match(content, /лимит — `5` итераций/);
+  assert.match(content, /Лимит по умолчанию — `5` итераций/);
+  assert.match(content, /Порога у цикла нет/);
   assert.match(content, /полное `eda-review`/);
   assert.match(content, /`eda-review` → `eda-fix-by-review` → повторное `eda-review`/);
-  assert.match(content, /`result: clean`, ноль находок и `score >= threshold`/);
-  assert.match(content, /Любая находка обязательно исправляется независимо от score/);
-  assert.match(content, /набор находок не изменился/);
+  assert.match(content, /`result: clean` и ноль находок/);
+  assert.match(content, /Score — только справочное число/);
+  assert.match(content, /число открытых находок не уменьшилось/);
+  assert.match(content, /Ранее отклонённые находки/);
   assert.match(content, /изолированным субагентом/);
   assert.match(content, /reviewed-with-warnings/);
   assert.doesNotMatch(content, /apply-optional/);
   assert.doesNotMatch(content, /eda-review-check/);
+  assert.doesNotMatch(content, /score >= threshold/);
 });
 
 test('eda-plan-execute forbids suppressing failing checks', async () => {
