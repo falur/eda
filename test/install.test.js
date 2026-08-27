@@ -491,6 +491,61 @@ test('updateAll skip migrates old settings and creates defaults only when missin
   assert.doesNotMatch(stdout, /Какие настройки включить|Настройки будут запрошены/);
 });
 
+test('update removes retired settings keys from a complete v3 file', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-settings-'));
+  const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+
+  await update({ cwd, output: new PassThrough() });
+  const fresh = await fs.readFile(settingsPath, 'utf8');
+  assert.doesNotMatch(fresh, /feasibility/);
+
+  const stale = fresh.replace(
+    /^plan-review:$/m,
+    'plan-review:\n  agents:\n    - feasibility\n    - rules'
+  );
+  await fs.writeFile(settingsPath, stale);
+
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  await update({ cwd, output });
+
+  const cleaned = await fs.readFile(settingsPath, 'utf8');
+  assert.doesNotMatch(cleaned, /feasibility/);
+  assert.match(cleaned, /^version: 3$/m);
+  assert.match(cleaned, /^plan-review:$/m);
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Убираю устаревшие настройки: plan-review\.agents\./);
+  assert.doesNotMatch(stdout, /полные — вопросы не требуются/);
+
+  const output2 = new PassThrough();
+  const outputChunks2 = [];
+  output2.on('data', chunk => outputChunks2.push(chunk));
+  await update({ cwd, output: output2 });
+  assert.match(Buffer.concat(outputChunks2).toString('utf8'), /полные — вопросы не требуются/);
+});
+
+test('stored eda-polish step args lose the retired threshold', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-step-args-'));
+  const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+
+  await update({ cwd, output: new PassThrough() });
+  const fresh = await fs.readFile(settingsPath, 'utf8');
+  const stale = fresh
+    .replace(/^      args: "limit 5"$/m, '      args: "threshold 90 limit 2"')
+    .replace(/^plan-review:$/m, 'plan-review:\n  agents:\n    - feasibility');
+  assert.match(stale, /threshold 90 limit 2/);
+  await fs.writeFile(settingsPath, stale);
+
+  await update({ cwd, output: new PassThrough() });
+
+  const cleaned = await fs.readFile(settingsPath, 'utf8');
+  assert.doesNotMatch(cleaned, /threshold 90/);
+  assert.match(cleaned, /args: "limit 2"/);
+});
+
 test('updateAll migrates artifacts independently and continues after a project migration error', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-artifacts-'));
   const goodProject = path.join(root, 'good');
