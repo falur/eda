@@ -1651,6 +1651,12 @@ test('eda-commit delegates the full commit flow to one simple agent', async () =
   assert.match(executorPrompt, /gh pr view/);
   assert.match(executorPrompt, /gh pr create/);
   assert.match(executorPrompt, /фактические номер и URL/);
+  assert.match(executorPrompt, /После любого выполненного push всегда возвращай ссылку/);
+  assert.match(executorPrompt, /`pr\.status: absent` и `pr\.create_url`/);
+  assert.match(executorPrompt, /status: skipped \| existing \| created \| absent \| failed/);
+  assert.match(executorPrompt, /create_url: <url \| null>/);
+  assert.match(content, /Если push выполнен, а PR текущей ветки нет \(`pr\.status: absent`\), спроси один раз/);
+  assert.match(content, /Если push выполнен, ссылка обязательна всегда/);
   assert.match(executorPrompt, /Если hook упал/);
   assert.match(executorPrompt, /status: empty \| completed \| committed \| partial \| blocked/);
   assert.match(executorPrompt, /существующий PR не дублируй/);
