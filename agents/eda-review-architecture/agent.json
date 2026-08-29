@@ -10,6 +10,5 @@
     "claude": "high",
     "codex": "high"
   },
-  "access": "read-only",
-  "maxTurns": 30
+  "access": "read-only"
 }

@@ -10,6 +10,5 @@
     "claude": "medium",
     "codex": "medium"
   },
-  "access": "read-only",
-  "maxTurns": 30
+  "access": "read-only"
 }

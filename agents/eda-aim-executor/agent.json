@@ -10,6 +10,5 @@
     "claude": "high",
     "codex": "high"
   },
-  "access": "workspace-write",
-  "maxTurns": 80
+  "access": "workspace-write"
 }

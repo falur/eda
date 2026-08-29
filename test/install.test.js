@@ -113,6 +113,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
 
   assert.match(claudeExecutor, /^model: haiku$/m);
   assert.doesNotMatch(claudeExecutor, /^permissionMode:/m);
+  assert.doesNotMatch(claudeExecutor, /^maxTurns:/m);
   assert.match(codexExecutor, /^model = "gpt-5\.6-luna"$/m);
   assert.doesNotMatch(codexExecutor, /^sandbox_mode/m);
   assert.match(claudeAimExecutor, /^model: opus$/m);
@@ -133,7 +134,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '3.2.1');
+    assert.equal(manifest.packageVersion, '3.2.2');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -1243,6 +1244,44 @@ test('all packaged eda skills keep trigger descriptions concise', async () => {
 
     assert.ok(match, `${file} must contain a single-line quoted description`);
     assert.ok(match[1].length <= 200, `${file} description must not exceed 200 characters`);
+  }
+});
+
+test('all packaged agents use the supported metadata schema', async () => {
+  const expectedKeys = ['access', 'description', 'models', 'name', 'reasoning', 'schemaVersion'];
+
+  for (const agentName of await listAgentNames()) {
+    const config = JSON.parse(
+      await fs.readFile(path.join(AGENTS_SRC, agentName, 'agent.json'), 'utf8')
+    );
+
+    assert.deepEqual(Object.keys(config).sort(), expectedKeys, `${agentName}: unexpected metadata fields`);
+  }
+});
+
+test('subagent orchestrators classify technical stops consistently', async () => {
+  const orchestrators = [
+    'eda-aim',
+    'eda-commit',
+    'eda-merge-worktree',
+    'eda-orhestra',
+    'eda-plan',
+    'eda-plan-execute',
+    'eda-plan-polish',
+    'eda-polish',
+    'eda-review',
+    'eda-worktree'
+  ];
+
+  for (const skillName of orchestrators) {
+    const content = await fs.readFile(skillPath(skillName), 'utf8');
+    assert.match(content, /Технические остановки субагентов/, skillName);
+    assert.match(content, /blocked: заняты слоты субагентов/, skillName);
+    assert.match(content, /blocked: достигнут лимит глубины субагентов/, skillName);
+    assert.match(content, /blocked: исчерпана квота/, skillName);
+    assert.match(content, /blocked: нужно разрешение пользователя/, skillName);
+    assert.match(content, /временная API-, server-, overload- или network-ошибка/, skillName);
+    assert.match(content, /не зацикливай retry/, skillName);
   }
 });
 

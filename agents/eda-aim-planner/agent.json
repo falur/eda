@@ -10,6 +10,5 @@
     "claude": "medium",
     "codex": "medium"
   },
-  "access": "workspace-write",
-  "maxTurns": 30
+  "access": "workspace-write"
 }

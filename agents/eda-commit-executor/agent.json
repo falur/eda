@@ -10,6 +10,5 @@
     "claude": "low",
     "codex": "low"
   },
-  "access": "git-write",
-  "maxTurns": 30
+  "access": "git-write"
 }
