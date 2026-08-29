@@ -134,7 +134,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '3.2.2');
+    assert.equal(manifest.packageVersion, '3.3.0');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -437,6 +437,7 @@ test('updateAll writes one shared settings file to every updated project', async
   const depthThreeProject = path.join(root, 'group', 'nested', 'too-deep');
   const planSource = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const reviewSource = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const reviewConfig = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-review/skill.json'), 'utf8'));
 
   await fs.mkdir(path.join(depthZeroProject, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(depthZeroProject, '.codex/skills/eda-plan.md'), 'old layout');
@@ -467,7 +468,10 @@ test('updateAll writes one shared settings file to every updated project', async
     fs.stat(path.join(depthZeroProject, '.codex/skills/eda-plan.md')),
     err => err?.code === 'ENOENT'
   );
-  assert.equal(await fs.readFile(path.join(depthTwoProject, '.claude/skills/eda-review/SKILL.md'), 'utf8'), reviewSource);
+  assert.equal(
+    await fs.readFile(path.join(depthTwoProject, '.claude/skills/eda-review/SKILL.md'), 'utf8'),
+    renderClaudeSkill(reviewSource, reviewConfig)
+  );
   assert.equal(await fs.readFile(path.join(depthTwoProject, '.agents/skills/eda-plan/SKILL.md'), 'utf8'), planSource);
   await assert.rejects(
     fs.stat(path.join(depthTwoProject, '.codex/skills/eda-research')),
@@ -1874,7 +1878,7 @@ test('eda-plan delegates the complete plan-polish cycle while review workflows r
   assert.match(plan, /При недоступности нативных субагентов остановись; не используй CLI-fallback/);
   assert.doesNotMatch(plan, /apply-optional/);
 
-  assert.match(review, /В Codex запускай установленный custom agent через `spawn_agent` или аналог/);
+  assert.match(review, /В Codex каждого установленного custom agent запускай через `spawn_agent` с `fork_turns: "none"`/);
   assert.match(review, /нативные субагенты недоступны, остановись/);
   assert.match(review, /не создавай отдельные CLI-процессы/);
 });
@@ -1897,9 +1901,21 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
 
 test('eda-review orchestrates specialized agents without legacy modes or cross cli', async () => {
   const content = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const config = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-review/skill.json'), 'utf8'));
+  const claude = renderClaudeSkill(content, config);
 
   assert.match(content, /Работай как оркестратор установленных `eda-review-\*` агентов/);
-  assert.match(content, /Запусти все выбранные проверки одним параллельным пакетом/);
+  assert.equal(config.claude.context, 'fork');
+  assert.equal(config.claude.agent, 'general-purpose');
+  assert.match(claude, /^context: fork$/m);
+  assert.match(claude, /^agent: general-purpose$/m);
+  assert.doesNotMatch(content, /^context:/m);
+  assert.match(content, /через `spawn_agent` с `fork_turns: "none"`/);
+  assert.match(content, /не оставляй `fork_turns` по умолчанию/);
+  assert.match(content, /все вызовы одним параллельным пакетом в одном ответе ассистента/);
+  assert.match(content, /Не дели проверки заранее на волны, партии или последовательные группы/);
+  assert.match(content, /в Codex используй `wait_agent`/);
+  assert.match(content, /Не используй Bash, shell-циклы, `sleep`, опрос файлов или артефактов/);
   assert.match(content, /один раз повтори того же агента на той же модели/);
   assert.match(content, /`not_applicable` перенеси в skipped/);
   assert.match(content, /Несовпадение модели считай ошибкой контракта/);
@@ -2230,6 +2246,11 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   assert.match(content, /число открытых находок не уменьшилось/);
   assert.match(content, /Ранее отклонённые находки/);
   assert.match(content, /изолированным субагентом/);
+  assert.match(content, /вызывай установленный `eda-review` именно через `Skill`/);
+  assert.match(content, /содержит `context: fork`/);
+  assert.match(content, /не запускай `eda-review-\*` агентов напрямую из полировщика/);
+  assert.match(content, /каждый вызов `eda-review` и `eda-fix-by-review` запускай через `spawn_agent` с `fork_turns: "none"`/);
+  assert.match(content, /не используй `"all"`/);
   assert.match(content, /reviewed-with-warnings/);
   assert.doesNotMatch(content, /apply-optional/);
   assert.doesNotMatch(content, /eda-review-check/);
