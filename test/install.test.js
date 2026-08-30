@@ -134,7 +134,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '3.3.0');
+    assert.equal(manifest.packageVersion, '3.3.1');
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -1866,6 +1866,22 @@ test('eda-plan writes concrete text without padding', async () => {
   assert.match(content, /не повторять один контракт в нескольких разделах/);
   assert.match(content, /не выдумывать пути, символы или API ради видимости конкретики/);
   assert.match(content, /нет общих призывов, повторов и пояснений/);
+});
+
+test('eda-plan keeps formulas that define observable contracts', async () => {
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const review = await fs.readFile(skillPath('eda-plan-review'), 'utf8');
+  const fix = await fs.readFile(skillPath('eda-plan-review-fix'), 'utf8');
+
+  assert.match(plan, /Формулы и компактный псевдокод допустимы/);
+  assert.match(plan, /`retryAt = now \+ 5 minutes`/);
+  assert.match(plan, /формулы, задающие обязательное поведение, не удалены только из-за формы записи/);
+  assert.match(review, /Сам по себе формульный синтаксис не является основанием для `fail`/);
+  assert.match(review, /`retryAt = now \+ 5 minutes`/);
+  assert.match(fix, /Не удаляй и не переписывай только из-за формы записи формулу/);
+  assert.doesNotMatch(plan, /сигнатуры чужих методов, формулы, приведения типов/);
+  assert.doesNotMatch(review, /нет сигнатур чужих методов, формул, приведений типов/);
+  assert.doesNotMatch(fix, /сигнатуры чужих методов, формулы, приведения типов/);
 });
 
 test('eda-plan delegates the complete plan-polish cycle while review workflows require native packaged subagents', async () => {

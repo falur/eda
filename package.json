@@ -1,6 +1,6 @@
 {
   "name": "@gian-tiaga/eda",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "Пакет скилов и специализированных агентов eda-* для Claude Code и Codex CLI",
   "type": "module",
   "bin": {
