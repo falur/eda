@@ -131,10 +131,12 @@ test('init renders custom agents and ownership manifests for both targets', asyn
     err => err?.code === 'ENOENT'
   );
 
+  const packageJson = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
+
   for (const target of ['claude', 'codex']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.packageVersion, '3.3.1');
+    assert.equal(manifest.packageVersion, packageJson.version);
     assert.deepEqual(manifest.skills, await listSkillNames());
     assert.deepEqual(manifest.agents, await listAgentNames());
   }
@@ -943,6 +945,9 @@ test('askSettings returns default project settings without an interactive termin
     planExecute: {
       mode: 'auto'
     },
+    manualTest: {
+      depth: 'full'
+    },
     review: undefined,
     sendReview: {
       closePreviousReviews: false
@@ -1063,6 +1068,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
   assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 2$/m);
   assert.match(settings, /^plan-execute:\n  # Где eda-plan-execute выполняет фазы плана\.\n[^\n]*\n  mode: auto$/m);
+  assert.match(settings, /^manual-test:\n  # Глубина ручной проверки в eda-manual-test\.\n[\s\S]*?^  # full \| smoke \| ask_each_time\n  depth: full$/m);
   assert.match(settings, /^plan-review:\n[^\n]*\n[^\n]*\n  threshold: 100\n\nplan-polish:$/m, 'plan-review must not expose agents');
   assert.doesNotMatch(settings, /^review-check:/m);
   assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
@@ -1219,6 +1225,8 @@ plan:
   size: short
 plan-execute:
   mode: single
+manual-test:
+  depth: smoke
 `;
   await fs.writeFile(settingsPath, original);
 
@@ -1232,6 +1240,7 @@ plan-execute:
   assert.match(settings, /^plan-review:/m);
   assert.match(settings, /^plan-polish:/m);
   assert.match(settings, /^plan-execute:\n[\s\S]*?^  mode: single$/m);
+  assert.match(settings, /^manual-test:\n[\s\S]*?^  depth: smoke$/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Переношу docs\/settings\.yaml на version: 3/);
   assert.match(stdout, /Переписан файл настроек: docs\/settings\.yaml → version: 3\./);
@@ -2235,7 +2244,7 @@ test('eda-fix-by-review применяет каждую находку без op
   assert.doesNotMatch(content, /apply-optional/);
 });
 
-test('eda-manual-test documents manual API and frontend smoke checks', async () => {
+test('eda-manual-test documents full coverage checks for API, database, CLI, UI and algorithms', async () => {
   const content = await fs.readFile(skillPath('eda-manual-test'), 'utf8');
 
   assert.match(content, /name: eda-manual-test/);
@@ -2254,6 +2263,31 @@ test('eda-manual-test documents manual API and frontend smoke checks', async () 
   assert.match(content, /Она не заменяет критерии задачи/);
   assert.match(content, /не требует тестировать всю предметную область/);
   assert.match(content, /проверять изменённую задачу как новое правило или сначала пересогласовать карточку через `eda-business`/);
+
+  assert.match(content, /## Режим запуска/);
+  assert.match(content, /\| `manual-test\.depth` \| `full`, `smoke`, `ask_each_time`/);
+  assert.match(content, /`full` — глубина по умолчанию\. Отсутствие плана её не снижает/);
+  assert.match(content, /Сузить проверку до главного сценария можно только по явному указанию пользователя или настройке/);
+  assert.match(content, /### 3\. Разложить задачу на сценарии/);
+  assert.match(content, /\| Целевой алгоритм \| каждый путь от входного события до финального состояния/);
+  assert.match(content, /\| Контракты: API и внешние контракты \| каждый новый и изменённый endpoint/);
+  assert.match(content, /### 4\. Собрать матрицу покрытия/);
+  assert.match(content, /все новые и затронутые endpoints/);
+  assert.match(content, /миграции применяются без ошибок/);
+  assert.match(content, /каждая новая и изменённая команда/);
+  assert.match(content, /каждый новый и изменённый экран/);
+  assert.match(content, /сквозной проход по целевому алгоритму/);
+  assert.match(content, /\| Фон и интеграции \|/);
+  assert.match(content, /\| Права и роли \|/);
+  assert.match(content, /\| Конфигурация \|/);
+  assert.match(content, /\| Логи и ошибки \|/);
+  assert.match(content, /\| Регрессии рядом \|/);
+  assert.match(content, /Базу проверяй запросами к базе/);
+  assert.match(content, /depth: <full \| smoke>/);
+  assert.match(content, /## Не проверено/);
+  assert.match(content, /`passed` ставится только когда все применимые области закрыты фактической проверкой/);
+  assert.match(content, /Сводить проверку по плану к smoke-проходу основного сценария/);
+  assert.match(content, /Закрывать область чтением кода, ссылкой на автотесты/);
 });
 
 test('eda-polish documents the full-review-fix loop and limits', async () => {
@@ -2314,6 +2348,42 @@ test('plan-execute mode is asked as a scalar setting and falls back to auto for 
 
   const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(written, /^plan-execute:\n[\s\S]*?^  mode: auto$/m);
+});
+
+test('manual-test depth is asked as a scalar setting and falls back to full for unknown values', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+  const messages = [];
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['manual-test'],
+    checkboxPrompt: async () => {
+      throw new Error('checkbox must not be called for manual-test settings');
+    },
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['full', 'smoke', 'ask_each_time']);
+      assert.equal(prompt.default, 'full');
+      return 'smoke';
+    }
+  });
+
+  assert.deepEqual(messages, ['Какую глубину ручной проверки использовать в eda-manual-test по умолчанию?']);
+  assert.equal(settings.manualTest.depth, 'smoke');
+
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-manual-test-depth-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nmanual-test:\n  depth: deep\n');
+
+  await update({ cwd, output: silentOutput() });
+
+  const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(written, /^manual-test:\n[\s\S]*?^  depth: full$/m);
 });
 
 test('eda-plan-execute supports subagents, single and auto execution modes', async () => {
