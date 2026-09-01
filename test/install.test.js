@@ -940,6 +940,9 @@ test('askSettings returns default project settings without an interactive termin
     planPolish: {
       limit: 2
     },
+    planExecute: {
+      mode: 'auto'
+    },
     review: undefined,
     sendReview: {
       closePreviousReviews: false
@@ -1059,6 +1062,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
   assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
   assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 2$/m);
+  assert.match(settings, /^plan-execute:\n  # Где eda-plan-execute выполняет фазы плана\.\n[^\n]*\n  mode: auto$/m);
   assert.match(settings, /^plan-review:\n[^\n]*\n[^\n]*\n  threshold: 100\n\nplan-polish:$/m, 'plan-review must not expose agents');
   assert.doesNotMatch(settings, /^review-check:/m);
   assert.doesNotMatch(settings, /^review:\n  strict:/m, 'review must not expose strict');
@@ -1213,6 +1217,8 @@ aim:
 plan:
   review: false
   size: short
+plan-execute:
+  mode: single
 `;
   await fs.writeFile(settingsPath, original);
 
@@ -1225,6 +1231,7 @@ plan:
   assert.match(settings, /^  size: short$/m);
   assert.match(settings, /^plan-review:/m);
   assert.match(settings, /^plan-polish:/m);
+  assert.match(settings, /^plan-execute:\n[\s\S]*?^  mode: single$/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Переношу docs\/settings\.yaml на version: 3/);
   assert.match(stdout, /Переписан файл настроек: docs\/settings\.yaml → version: 3\./);
@@ -1398,7 +1405,7 @@ test('implementation workflow reads only applicable project references', async (
     if (file === 'eda-plan-execute') {
       assert.match(
         content,
-        /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, исполнитель читает эту карточку целиком перед соответствующим изменением/,
+        /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, он читает эту карточку целиком перед соответствующим изменением/,
         `${file} must load references as affected components require them`
       );
     } else {
@@ -2273,12 +2280,65 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   assert.doesNotMatch(content, /score >= threshold/);
 });
 
+test('plan-execute mode is asked as a scalar setting and falls back to auto for unknown values', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+  const messages = [];
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['plan-execute'],
+    checkboxPrompt: async () => {
+      throw new Error('checkbox must not be called for plan-execute settings');
+    },
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['auto', 'subagents', 'single']);
+      assert.equal(prompt.default, 'auto');
+      return 'subagents';
+    }
+  });
+
+  assert.deepEqual(messages, ['Как eda-plan-execute должен выполнять фазы по умолчанию?']);
+  assert.equal(settings.planExecute.mode, 'subagents');
+
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-plan-execute-mode-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nplan-execute:\n  mode: parallel\n');
+
+  await update({ cwd, output: silentOutput() });
+
+  const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(written, /^plan-execute:\n[\s\S]*?^  mode: auto$/m);
+});
+
+test('eda-plan-execute supports subagents, single and auto execution modes', async () => {
+  const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
+
+  assert.match(content, /Прочитай только раздел `plan-execute` из `docs\/settings\.yaml`/);
+  assert.match(content, /`plan-execute\.mode` принимает `subagents`, `single` или `auto`; при отсутствующем или невалидном значении используй `auto`/);
+  assert.match(content, /без явного режима → `\$MODE=plan-execute\.mode` из валидных настроек, иначе `\$MODE=auto`/);
+  assert.match(content, /Режим из вызова важнее настройки, настройка важнее умолчания/);
+  assert.match(content, /## Режимы выполнения/);
+  assert.match(content, /`auto` выбирай `single`, только когда весь план реально помещается в один контекст/);
+  assert.match(content, /Иначе — `subagents`; при сомнении тоже `subagents`/);
+  assert.match(content, /переключи оставшиеся фазы на `subagents`/);
+  assert.match(content, /Если `\$MODE=auto`, сравни разобранные фазы с критериями из «Режимы выполнения» и зафиксируй итоговый режим/);
+  assert.match(content, /В `single` основной агент выполняет фазы и проверки сам/);
+  assert.match(content, /Весь этап — только для `subagents`/);
+  assert.match(content, /Выполнять большой или тяжёлый по контексту план в `single`, если режим не задан явно/);
+});
+
 test('eda-plan-execute forbids suppressing failing checks', async () => {
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /Проверки нельзя подавлять/);
-  assert.match(content, /Не поручай отключать линтеры, тесты, typecheck, static analysis/);
-  assert.match(content, /добавлять игноры или ослаблять команды и правила/);
+  assert.match(content, /Не отключай и не поручай отключать линтеры, тесты, typecheck, static analysis/);
+  assert.match(content, /не добавляй игноры и не ослабляй команды и правила/);
   assert.match(content, /Запрещено делать проверки зелёными через подавление ошибок/);
   assert.match(content, /Подавлять ошибки проверок, ослаблять правила или менять команды ради зелёного результата/);
 });
@@ -2286,10 +2346,10 @@ test('eda-plan-execute forbids suppressing failing checks', async () => {
 test('eda-plan-execute treats business, rules, architecture, and references as mandatory execution frame', async () => {
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
-  assert.match(content, /Рамку читает исполнитель фазы/);
-  assert.match(content, /Каждый исполнитель целиком читает план, `docs\/rules\.md` и `docs\/arch\.md`/);
-  assert.match(content, /Для поведения своей фазы он читает карточки из `sources\.business`/);
-  assert.match(content, /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, исполнитель читает эту карточку целиком перед соответствующим изменением/);
+  assert.match(content, /Рамку читает тот, кто выполняет фазу/);
+  assert.match(content, /Он целиком читает план, `docs\/rules\.md` и `docs\/arch\.md`/);
+  assert.match(content, /Для поведения своей фазы читает карточки из `sources\.business`/);
+  assert.match(content, /Если выполнение фазы затрагивает компонент, для которого в `docs\/references\.md` указана карточка, он читает эту карточку целиком перед соответствующим изменением/);
   assert.match(content, /План задаёт область выполняемой работы, а применимые business-карточки — требования/);
   assert.match(content, /изменить план через `eda-plan` или сначала пересогласовать правило через `eda-business`/);
   assert.match(content, /business_read: \[<пути или пусто>\]/);
@@ -2299,17 +2359,16 @@ test('eda-plan-execute delegates whole phases, fixes, and checks while managing 
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /Фазы выполняй строго последовательно/);
-  assert.match(content, /Одна фаза — один исполнитель/);
+  assert.match(content, /В `subagents` одна фаза — один исполнитель/);
   assert.match(content, /Запускай каждую фазу целиком в новом субагенте/);
   assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
   assert.match(content, /Запусти одного нового изолированного исполнителя и сохрани его идентификатор как исполнителя этой фазы/);
   assert.match(content, /продолжи того же исполнителя фазы/);
   assert.match(content, /нового изолированного субагента-проверяющего/);
-  assert.match(content, /Основной агент пишет только этот журнал и отметки прогресса в плане/);
-  assert.match(content, /Самому менять код, тесты, миграции, конфиги, зависимости или проектную документацию/);
-  assert.match(content, /Самому запускать тесты, линтеры, typecheck, сборку, миграции, серверы/);
-  assert.match(content, /Не запускай следующую, пока текущая не выполнена и её отдельная проверка не прошла/);
-  assert.match(content, /нового субагента для полного набора тестов/);
+  assert.match(content, /Журнал и отметки прогресса в плане ведёт только основной агент/);
+  assert.match(content, /В `subagents` самому менять код, тесты, миграции, конфиги и зависимости или самому запускать проверки проекта/);
+  assert.match(content, /Не начинай следующую, пока текущая не выполнена и её проверка не прошла/);
+  assert.match(content, /В `subagents` это делает отдельный новый субагент/);
   assert.match(content, /blocked: недоступно изолированное выполнение/);
   assert.match(content, /blocked: выполнение не сходится/);
   assert.doesNotMatch(content, /Выполнять фазы волнами/);
