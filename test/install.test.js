@@ -111,10 +111,10 @@ test('init renders custom agents and ownership manifests for both targets', asyn
   const claudeAimExecutor = await fs.readFile(path.join(cwd, '.claude/agents/eda-aim-executor.md'), 'utf8');
   const codexAimExecutor = await fs.readFile(path.join(cwd, '.codex/agents/eda-aim-executor.toml'), 'utf8');
 
-  assert.match(claudeExecutor, /^model: haiku$/m);
+  assert.match(claudeExecutor, /^model: sonnet$/m);
   assert.doesNotMatch(claudeExecutor, /^permissionMode:/m);
   assert.doesNotMatch(claudeExecutor, /^maxTurns:/m);
-  assert.match(codexExecutor, /^model = "gpt-5\.6-luna"$/m);
+  assert.match(codexExecutor, /^model = "gpt-5\.6-terra"$/m);
   assert.doesNotMatch(codexExecutor, /^sandbox_mode/m);
   assert.match(claudeAimExecutor, /^model: opus$/m);
   assert.match(claudeAimExecutor, /^tools: Read, Glob, Grep, Bash, Write, Edit, NotebookEdit$/m);
@@ -688,7 +688,7 @@ test('updateAll discovers a project with only an installed eda agent', async () 
   );
   assert.match(
     await fs.readFile(path.join(project, '.codex/agents/eda-commit-executor.toml'), 'utf8'),
-    /model = "gpt-5\.6-luna"/
+    /model = "gpt-5\.6-terra"/
   );
   assert.match(await fs.readFile(path.join(project, '.agents/skills/eda-commit/SKILL.md'), 'utf8'), /name: eda-commit/);
   assert.match(
@@ -1746,13 +1746,17 @@ test('eda-plan no longer requires a research selection question by default', asy
 
 test('eda-commit delegates the full commit flow to one simple agent', async () => {
   const content = await fs.readFile(skillPath('eda-commit'), 'utf8');
+  const config = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-commit/skill.json'), 'utf8'));
   const executorAgent = JSON.parse(await fs.readFile(path.join(AGENTS_SRC, 'eda-commit-executor/agent.json'), 'utf8'));
   const executorPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-commit-executor/prompt.md'), 'utf8');
 
-  assert.equal(executorAgent.models.claude, 'haiku');
-  assert.equal(executorAgent.models.codex, 'gpt-5.6-luna');
-  assert.equal(executorAgent.reasoning.claude, 'low');
-  assert.equal(executorAgent.reasoning.codex, 'low');
+  assert.equal(config.models.claude, 'sonnet');
+  assert.equal(config.models.codex, 'gpt-5.6-terra');
+  assert.match(renderClaudeSkill(content, config), /^model: sonnet$/m);
+  assert.equal(executorAgent.models.claude, 'sonnet');
+  assert.equal(executorAgent.models.codex, 'gpt-5.6-terra');
+  assert.equal(executorAgent.reasoning.claude, 'medium');
+  assert.equal(executorAgent.reasoning.codex, 'medium');
   assert.equal(executorAgent.access, 'git-write');
 
   assert.match(content, /`eda-commit-executor`/);
@@ -1783,6 +1787,14 @@ test('eda-commit delegates the full commit flow to one simple agent', async () =
   assert.match(executorPrompt, /git commit --only -- <paths>/);
   assert.match(executorPrompt, /чужие staged-изменения не должны попасть в текущий коммит/);
   assert.match(executorPrompt, /После последнего коммита проверь, что из выбранного состава ничего не осталось/);
+  assert.match(executorPrompt, /общие слова вроде `changes`, `updates` и «правки»/);
+  assert.match(executorPrompt, /по полному `USER_REQUEST`, фактическим коммитам текущей ветки относительно base и итоговому diff/);
+  assert.match(executorPrompt, /следуй найденному шаблону PR/);
+  assert.match(executorPrompt, /перечисли только реально выполненные команды и их результат/);
+  assert.match(executorPrompt, /не выдумывай тесты, issue, метрики, совместимость или breaking changes/);
+  assert.match(executorPrompt, /все основные логические группы коммитов должны быть отражены/);
+  assert.match(executorPrompt, /--body-file/);
+  assert.match(executorPrompt, /обычный push не перезаписывает текст PR/);
   assert.match(executorPrompt, /верни `blocked`.*до `git add`/s);
   assert.match(executorPrompt, /git add -- <paths>/);
   assert.match(executorPrompt, /gh pr view/);

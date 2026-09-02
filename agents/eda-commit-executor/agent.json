@@ -3,12 +3,12 @@
   "name": "eda-commit-executor",
   "description": "Самостоятельно собирает git-контекст, делит выбранные или все незакоммиченные изменения на логические коммиты и выполняет явно разрешённые push, PR или merge-действия для eda-commit.",
   "models": {
-    "claude": "haiku",
-    "codex": "gpt-5.6-luna"
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
   },
   "reasoning": {
-    "claude": "low",
-    "codex": "low"
+    "claude": "medium",
+    "codex": "medium"
   },
   "access": "git-write"
 }
