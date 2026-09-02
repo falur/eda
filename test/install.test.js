@@ -398,6 +398,11 @@ test('update lists only skills whose installed content changed', async () => {
     const source = await fs.readFile(skillPath(file), 'utf8');
     await fs.writeFile(path.join(dst, skillName, 'SKILL.md'), source);
   }
+  await fs.mkdir(path.join(dst, 'eda-review/references'), { recursive: true });
+  await fs.copyFile(
+    path.join(SKILLS_SRC, 'eda-review/references/review-matrix.md'),
+    path.join(dst, 'eda-review/references/review-matrix.md')
+  );
   await fs.writeFile(path.join(dst, 'eda-plan/SKILL.md'), 'old plan');
   await fs.writeFile(path.join(dst, 'eda-review/SKILL.md'), 'old review');
 
@@ -424,6 +429,11 @@ test('update prints zero changed skills when installed content is current', asyn
     const source = await fs.readFile(skillPath(file), 'utf8');
     await fs.writeFile(path.join(dst, skillName, 'SKILL.md'), source);
   }
+  await fs.mkdir(path.join(dst, 'eda-review/references'), { recursive: true });
+  await fs.copyFile(
+    path.join(SKILLS_SRC, 'eda-review/references/review-matrix.md'),
+    path.join(dst, 'eda-review/references/review-matrix.md')
+  );
 
   await update({ cwd, output });
 
@@ -974,6 +984,7 @@ test('askSettings returns default project settings without an interactive termin
     documentation: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     previous_reviews: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } }
   });
+  assert.equal(settings.review.execution, 'subagents');
 });
 
 test('askSettings asks only for requested sections', async () => {
@@ -1064,7 +1075,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /^  review: true$/m);
   assert.doesNotMatch(settings, /^  qa:/m);
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
-  assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
+  assert.match(settings, /^review:\n  # Где eda-review выполняет выбранные проверки\.\n[^\n]*\n  execution: subagents\n  # Каждая проверка имеет собственный режим запуска; модели применяются только в subagents\.\n  agents:/m);
   assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
   assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 2$/m);
   assert.match(settings, /^plan-execute:\n  # Где eda-plan-execute выполняет фазы плана\.\n[^\n]*\n  mode: auto$/m);
@@ -1916,7 +1927,7 @@ test('eda-plan keeps formulas that define observable contracts', async () => {
   assert.doesNotMatch(fix, /сигнатуры чужих методов, формулы, приведения типов/);
 });
 
-test('eda-plan delegates the complete plan-polish cycle while review workflows require native packaged subagents', async () => {
+test('eda-plan delegates plan-polish while eda-review keeps a strict native subagents branch', async () => {
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const review = await fs.readFile(skillPath('eda-review'), 'utf8');
 
@@ -1929,6 +1940,8 @@ test('eda-plan delegates the complete plan-polish cycle while review workflows r
   assert.match(review, /В Codex каждого установленного custom agent запускай через `spawn_agent` с `fork_turns: "none"`/);
   assert.match(review, /нативные субагенты недоступны, остановись/);
   assert.match(review, /не создавай отдельные CLI-процессы/);
+  assert.match(review, /### Режим single/);
+  assert.match(review, /запрет относится к leaf-субагентам отдельных проверок/);
 });
 
 test('eda-plan-polish uses bounded specialized review and fix iterations', async () => {
@@ -1947,12 +1960,18 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
   assert.match(content, /менять код или запускать проверки проекта/);
 });
 
-test('eda-review orchestrates specialized agents without legacy modes or cross cli', async () => {
+test('eda-review supports single and subagents execution without legacy cross cli', async () => {
   const content = await fs.readFile(skillPath('eda-review'), 'utf8');
   const config = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-review/skill.json'), 'utf8'));
   const claude = renderClaudeSkill(content, config);
 
-  assert.match(content, /Работай как оркестратор установленных `eda-review-\*` агентов/);
+  assert.match(content, /В `subagents` оркестрируй установленных `eda-review-\*` агентов/);
+  assert.match(content, /В `single` выполни те же выбранные проверки самостоятельно по общей матрице/);
+  assert.match(content, /`review\.execution` принимает/);
+  assert.match(content, /Default — `subagents`/);
+  assert.match(content, /references\/review-matrix\.md/);
+  assert.match(content, /Не запускай `eda-review-\*` агентов, другие субагенты или отдельный CLI/);
+  assert.match(content, /execution: <subagents \| single>/);
   assert.equal(config.claude.context, 'fork');
   assert.equal(config.claude.agent, 'general-purpose');
   assert.match(claude, /^context: fork$/m);
@@ -2015,6 +2034,37 @@ test('eda-review roles live in packaged agents with structured contracts', async
   }
 
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
+});
+
+test('eda-review single matrix mirrors every specialized role', async () => {
+  const matrix = await fs.readFile(
+    path.join(SKILLS_SRC, 'eda-review/references/review-matrix.md'),
+    'utf8'
+  );
+  const checks = [
+    'correctness',
+    'architecture',
+    'rules',
+    'references',
+    'business',
+    'plan_alignment',
+    'code_quality',
+    'tests',
+    'security',
+    'performance',
+    'frontend',
+    'api',
+    'database',
+    'documentation',
+    'previous_reviews'
+  ];
+
+  for (const check of checks) {
+    assert.match(matrix, new RegExp(`^## ${check}$`, 'm'));
+  }
+  assert.match(matrix, /Для любой находки обязательны точное место/);
+  assert.match(matrix, /Не смешивай области/);
+  assert.match(matrix, /не resolve\/close треды/);
 });
 
 test('eda-plan-review использует один обязательный класс находок и score gate', async () => {
@@ -2366,6 +2416,53 @@ test('plan-execute mode is asked as a scalar setting and falls back to auto for 
   assert.match(written, /^plan-execute:\n[\s\S]*?^  mode: auto$/m);
 });
 
+test('review execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+  const messages = [];
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['review'],
+    checkboxPrompt: async () => {
+      throw new Error('checkbox must not be called for review settings');
+    },
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      if (prompt.message === 'Как eda-review должен выполнять проверки по умолчанию?') {
+        assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'single']);
+        assert.equal(prompt.default, 'subagents');
+        return 'single';
+      }
+      if (prompt.message.startsWith('Какой моделью ')) {
+        throw new Error('single review settings must not ask per-check models');
+      }
+      return prompt.default;
+    }
+  });
+
+  assert.equal(messages[0], 'Как eda-review должен выполнять проверки по умолчанию?');
+  assert.equal(settings.review.execution, 'single');
+
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-review-execution-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nreview:\n  execution: parallel\n');
+
+  await update({ cwd, output: silentOutput() });
+
+  const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(written, /^review:\n[\s\S]*?^  execution: subagents$/m);
+
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nreview:\n  execution: single\n');
+  await update({ cwd, output: silentOutput() });
+  const preserved = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(preserved, /^review:\n[\s\S]*?^  execution: single$/m);
+});
+
 test('manual-test depth is asked as a scalar setting and falls back to full for unknown values', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -2486,4 +2583,17 @@ test('update renders platform skill copies from packaged sources', async () => {
     assert.equal(claude, renderClaudeSkill(source, config), `${skillName} Claude copy must match rendered skill`);
     assert.equal(codex, source, `${skillName} Codex copy must match skills`);
   }
+
+  const matrixSource = await fs.readFile(
+    path.join(SKILLS_SRC, 'eda-review/references/review-matrix.md'),
+    'utf8'
+  );
+  assert.equal(
+    await fs.readFile(path.join(cwd, '.claude/skills/eda-review/references/review-matrix.md'), 'utf8'),
+    matrixSource
+  );
+  assert.equal(
+    await fs.readFile(path.join(cwd, '.agents/skills/eda-review/references/review-matrix.md'), 'utf8'),
+    matrixSource
+  );
 });
