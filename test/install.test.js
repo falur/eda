@@ -912,6 +912,7 @@ test('askSettings returns default project settings without an interactive termin
   }, {
     orhestra: {
       mode: 'automatic',
+      execution: 'subagents',
       steps: [
         { id: 'plan', skill: 'eda-plan', enabled: true, args: 'без проверок' },
         { id: 'plan-polish', skill: 'eda-plan-polish', enabled: true, args: '' },
@@ -1068,6 +1069,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(settings, /^version: 3$/m);
   assert.match(settings, /^orhestra:\n  # Режим полного цикла eda-orhestra\.\n  # automatic \| manual\n  mode: automatic/m);
+  assert.match(settings, /^  # subagents \| single \| single_propagated\n  execution: subagents$/m);
   assert.match(settings, /^  steps:\n    - id: plan\n      skill: eda-plan\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "без проверок"/m);
   assert.match(settings, /^    - id: plan-polish\n      skill: eda-plan-polish\n      enabled: true/m);
   assert.match(settings, /^    - id: polish\n      skill: eda-polish\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "limit 5"$/m);
@@ -1555,6 +1557,8 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(orhestra, /docs\/settings\.yaml/);
   assert.match(orhestra, /version: 3/);
   assert.match(orhestra, /orhestra\.mode: automatic/);
+  assert.match(orhestra, /orhestra\.execution: subagents/);
+  assert.match(orhestra, /`subagents`, `single` или `single_propagated`/);
   assert.match(orhestra, /`automatic` или `manual`/);
   assert.match(orhestra, /orhestra\.steps/);
   assert.match(orhestra, /`eda-polish`.*`limit N`/s);
@@ -1623,16 +1627,19 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.match(content, /полировка плана пропущена настройкой/);
   assert.match(content, /полировка кода пропущена настройкой/);
   assert.match(content, /Не разрешай `eda-orhestra`, `eda-aim`, `eda-commit`/);
-  assert.match(content, /Каждый активный шаг запускай в отдельном изолированном субагенте/);
-  assert.match(content, /`eda-plan`, `eda-plan-polish`, `eda-polish` и `eda-review`/);
-  assert.match(content, /свежий контекст без наследования истории текущего диалога/);
+  assert.match(content, /В `subagents` каждый активный шаг, повтор и `on_failure\.skill` запускай в отдельном изолированном субагенте/);
   assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
-  assert.match(content, /Каждый повтор шага и каждый `on_failure\.skill`/);
+  assert.match(content, /В `single` и `single_propagated` выполняй контракт каждого активного шага, повтора и `on_failure\.skill` сам/);
+  assert.match(content, /`eda-plan-execute`, `eda-polish` и `eda-review`/);
+  assert.match(content, /`eda-polish` уже передаст режим своему `eda-review`/);
+  assert.match(content, /если пользователь не задал этому шагу собственный режим/);
+  assert.match(content, /без orchestration-only указания `\$EXECUTION`/);
+  assert.match(content, /Не переключай `\$EXECUTION` автоматически/);
   assert.match(content, /В дефолтной цепочке здесь только `manual-test`/);
   assert.match(content, /не запускай полировку кода повторно/);
   assert.match(content, /blocked: недоступна изоляция этапа/);
   assert.match(content, /старое значение `steps\[\]\.skill: eda-execute` нормализуй в памяти в `eda-plan-execute`/);
-  assert.doesNotMatch(content, /оркестрируй в текущем верхнем контексте/);
+  assert.doesNotMatch(content, /передавай `single` всем/i);
   assert.doesNotMatch(content, /Коммитить, пушить, создавать PR или отправлять ревью\.[\s\S]*разрешено/);
 });
 
@@ -2414,6 +2421,48 @@ test('plan-execute mode is asked as a scalar setting and falls back to auto for 
 
   const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(written, /^plan-execute:\n[\s\S]*?^  mode: auto$/m);
+});
+
+test('orhestra execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+  const messages = [];
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['orhestra'],
+    missingKeys: new Set(['orhestra.execution']),
+    checkboxPrompt: async () => {
+      throw new Error('checkbox must not be called for an execution-only migration');
+    },
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'single', 'single_propagated']);
+      assert.equal(prompt.default, 'subagents');
+      return 'single_propagated';
+    }
+  });
+
+  assert.deepEqual(messages, ['Как eda-orhestra должен выполнять этапы по умолчанию?']);
+  assert.equal(settings.orhestra.execution, 'single_propagated');
+
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-orhestra-execution-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\norhestra:\n  execution: parallel\n');
+
+  await update({ cwd, output: silentOutput() });
+
+  const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(written, /^orhestra:\n[\s\S]*?^  execution: subagents$/m);
+
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\norhestra:\n  execution: single_propagated\n');
+  await update({ cwd, output: silentOutput() });
+  const preserved = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(preserved, /^orhestra:\n[\s\S]*?^  execution: single_propagated$/m);
 });
 
 test('review execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
