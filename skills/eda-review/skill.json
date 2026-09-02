@@ -1,7 +1,0 @@
-{
-  "schemaVersion": 1,
-  "claude": {
-    "context": "fork",
-    "agent": "general-purpose"
-  }
-}

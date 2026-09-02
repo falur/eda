@@ -449,7 +449,6 @@ test('updateAll writes one shared settings file to every updated project', async
   const depthThreeProject = path.join(root, 'group', 'nested', 'too-deep');
   const planSource = await fs.readFile(skillPath('eda-plan'), 'utf8');
   const reviewSource = await fs.readFile(skillPath('eda-review'), 'utf8');
-  const reviewConfig = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-review/skill.json'), 'utf8'));
 
   await fs.mkdir(path.join(depthZeroProject, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(depthZeroProject, '.codex/skills/eda-plan.md'), 'old layout');
@@ -482,7 +481,7 @@ test('updateAll writes one shared settings file to every updated project', async
   );
   assert.equal(
     await fs.readFile(path.join(depthTwoProject, '.claude/skills/eda-review/SKILL.md'), 'utf8'),
-    renderClaudeSkill(reviewSource, reviewConfig)
+    reviewSource
   );
   assert.equal(await fs.readFile(path.join(depthTwoProject, '.agents/skills/eda-plan/SKILL.md'), 'utf8'), planSource);
   await assert.rejects(
@@ -1069,7 +1068,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   const settings = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(settings, /^version: 3$/m);
   assert.match(settings, /^orhestra:\n  # Режим полного цикла eda-orhestra\.\n  # automatic \| manual\n  mode: automatic/m);
-  assert.match(settings, /^  # subagents \| single \| single_propagated\n  execution: subagents$/m);
+  assert.match(settings, /^  # subagents \| main \| main_propagated\n  execution: subagents$/m);
   assert.match(settings, /^  steps:\n    - id: plan\n      skill: eda-plan\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "без проверок"/m);
   assert.match(settings, /^    - id: plan-polish\n      skill: eda-plan-polish\n      enabled: true/m);
   assert.match(settings, /^    - id: polish\n      skill: eda-polish\n      enabled: true\n      # Строка аргументов[^\n]+\n      args: "limit 5"$/m);
@@ -1237,7 +1236,7 @@ plan:
   review: false
   size: short
 plan-execute:
-  mode: single
+  mode: main
 manual-test:
   depth: smoke
 `;
@@ -1252,7 +1251,7 @@ manual-test:
   assert.match(settings, /^  size: short$/m);
   assert.match(settings, /^plan-review:/m);
   assert.match(settings, /^plan-polish:/m);
-  assert.match(settings, /^plan-execute:\n[\s\S]*?^  mode: single$/m);
+  assert.match(settings, /^plan-execute:\n[\s\S]*?^  mode: main$/m);
   assert.match(settings, /^manual-test:\n[\s\S]*?^  depth: smoke$/m);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Переношу docs\/settings\.yaml на version: 3/);
@@ -1558,7 +1557,7 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(orhestra, /version: 3/);
   assert.match(orhestra, /orhestra\.mode: automatic/);
   assert.match(orhestra, /orhestra\.execution: subagents/);
-  assert.match(orhestra, /`subagents`, `single` или `single_propagated`/);
+  assert.match(orhestra, /`subagents`, `main` или `main_propagated`/);
   assert.match(orhestra, /`automatic` или `manual`/);
   assert.match(orhestra, /orhestra\.steps/);
   assert.match(orhestra, /`eda-polish`.*`limit N`/s);
@@ -1629,7 +1628,7 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.match(content, /Не разрешай `eda-orhestra`, `eda-aim`, `eda-commit`/);
   assert.match(content, /В `subagents` каждый активный шаг, повтор и `on_failure\.skill` запускай в отдельном изолированном субагенте/);
   assert.match(content, /`spawn_agent` с `fork_turns: "none"`/);
-  assert.match(content, /В `single` и `single_propagated` выполняй контракт каждого активного шага, повтора и `on_failure\.skill` сам/);
+  assert.match(content, /В `main` и `main_propagated` выполняй контракт каждого активного шага, повтора и `on_failure\.skill` сам/);
   assert.match(content, /`eda-plan-execute`, `eda-polish` и `eda-review`/);
   assert.match(content, /`eda-polish` уже передаст режим своему `eda-review`/);
   assert.match(content, /если пользователь не задал этому шагу собственный режим/);
@@ -1639,7 +1638,7 @@ test('eda-orhestra orchestrates the full automatic and manual workflow', async (
   assert.match(content, /не запускай полировку кода повторно/);
   assert.match(content, /blocked: недоступна изоляция этапа/);
   assert.match(content, /старое значение `steps\[\]\.skill: eda-execute` нормализуй в памяти в `eda-plan-execute`/);
-  assert.doesNotMatch(content, /передавай `single` всем/i);
+  assert.doesNotMatch(content, /передавай `main` всем/i);
   assert.doesNotMatch(content, /Коммитить, пушить, создавать PR или отправлять ревью\.[\s\S]*разрешено/);
 });
 
@@ -1947,8 +1946,8 @@ test('eda-plan delegates plan-polish while eda-review keeps a strict native suba
   assert.match(review, /В Codex каждого установленного custom agent запускай через `spawn_agent` с `fork_turns: "none"`/);
   assert.match(review, /нативные субагенты недоступны, остановись/);
   assert.match(review, /не создавай отдельные CLI-процессы/);
-  assert.match(review, /### Режим single/);
-  assert.match(review, /запрет относится к leaf-субагентам отдельных проверок/);
+  assert.match(review, /### Режим main/);
+  assert.match(review, /Вызывающий workflow не должен оборачивать `eda-review` в отдельного субагента/);
 });
 
 test('eda-plan-polish uses bounded specialized review and fix iterations', async () => {
@@ -1967,23 +1966,18 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
   assert.match(content, /менять код или запускать проверки проекта/);
 });
 
-test('eda-review supports single and subagents execution without legacy cross cli', async () => {
+test('eda-review supports main and subagents execution without legacy cross cli', async () => {
   const content = await fs.readFile(skillPath('eda-review'), 'utf8');
-  const config = JSON.parse(await fs.readFile(path.join(SKILLS_SRC, 'eda-review/skill.json'), 'utf8'));
-  const claude = renderClaudeSkill(content, config);
 
   assert.match(content, /В `subagents` оркестрируй установленных `eda-review-\*` агентов/);
-  assert.match(content, /В `single` выполни те же выбранные проверки самостоятельно по общей матрице/);
+  assert.match(content, /В `main` выполни те же выбранные проверки самостоятельно по общей матрице/);
   assert.match(content, /`review\.execution` принимает/);
   assert.match(content, /Default — `subagents`/);
   assert.match(content, /references\/review-matrix\.md/);
   assert.match(content, /Не запускай `eda-review-\*` агентов, другие субагенты или отдельный CLI/);
-  assert.match(content, /execution: <subagents \| single>/);
-  assert.equal(config.claude.context, 'fork');
-  assert.equal(config.claude.agent, 'general-purpose');
-  assert.match(claude, /^context: fork$/m);
-  assert.match(claude, /^agent: general-purpose$/m);
+  assert.match(content, /execution: <subagents \| main>/);
   assert.doesNotMatch(content, /^context:/m);
+  assert.doesNotMatch(content, /^agent:/m);
   assert.match(content, /через `spawn_agent` с `fork_turns: "none"`/);
   assert.match(content, /не оставляй `fork_turns` по умолчанию/);
   assert.match(content, /все вызовы одним параллельным пакетом в одном ответе ассистента/);
@@ -2043,7 +2037,7 @@ test('eda-review roles live in packaged agents with structured contracts', async
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
 });
 
-test('eda-review single matrix mirrors every specialized role', async () => {
+test('eda-review main matrix mirrors every specialized role', async () => {
   const matrix = await fs.readFile(
     path.join(SKILLS_SRC, 'eda-review/references/review-matrix.md'),
     'utf8'
@@ -2375,11 +2369,10 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   assert.match(content, /Score — только справочное число/);
   assert.match(content, /число открытых находок не уменьшилось/);
   assert.match(content, /Ранее отклонённые находки/);
-  assert.match(content, /изолированным субагентом/);
-  assert.match(content, /вызывай установленный `eda-review` именно через `Skill`/);
-  assert.match(content, /содержит `context: fork`/);
-  assert.match(content, /не запускай `eda-review-\*` агентов напрямую из полировщика/);
-  assert.match(content, /каждый вызов `eda-review` и `eda-fix-by-review` запускай через `spawn_agent` с `fork_turns: "none"`/);
+  assert.match(content, /В `main` основной агент сам выполняет установленные контракты `eda-review` и `eda-fix-by-review`/);
+  assert.match(content, /Не запускай для них верхнеуровневых или leaf-субагентов/);
+  assert.match(content, /В `subagents` каждый вызов `eda-review` и `eda-fix-by-review` запускай отдельным изолированным субагентом/);
+  assert.match(content, /В Claude Code используй `Agent`, в Codex — `spawn_agent` с `fork_turns: "none"`/);
   assert.match(content, /не используй `"all"`/);
   assert.match(content, /reviewed-with-warnings/);
   assert.doesNotMatch(content, /apply-optional/);
@@ -2403,7 +2396,7 @@ test('plan-execute mode is asked as a scalar setting and falls back to auto for 
     },
     selectPrompt: async prompt => {
       messages.push(prompt.message);
-      assert.deepEqual(prompt.choices.map(choice => choice.value), ['auto', 'subagents', 'single']);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['auto', 'subagents', 'main']);
       assert.equal(prompt.default, 'auto');
       return 'subagents';
     }
@@ -2421,6 +2414,11 @@ test('plan-execute mode is asked as a scalar setting and falls back to auto for 
 
   const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(written, /^plan-execute:\n[\s\S]*?^  mode: auto$/m);
+
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nplan-execute:\n  mode: single\n');
+  await update({ cwd, output: silentOutput() });
+  const migrated = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(migrated, /^plan-execute:\n[\s\S]*?^  mode: main$/m);
 });
 
 test('orhestra execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
@@ -2440,14 +2438,14 @@ test('orhestra execution is asked as a scalar setting and falls back to subagent
     },
     selectPrompt: async prompt => {
       messages.push(prompt.message);
-      assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'single', 'single_propagated']);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'main', 'main_propagated']);
       assert.equal(prompt.default, 'subagents');
-      return 'single_propagated';
+      return 'main_propagated';
     }
   });
 
   assert.deepEqual(messages, ['Как eda-orhestra должен выполнять этапы по умолчанию?']);
-  assert.equal(settings.orhestra.execution, 'single_propagated');
+  assert.equal(settings.orhestra.execution, 'main_propagated');
 
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-orhestra-execution-'));
   await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
@@ -2459,10 +2457,15 @@ test('orhestra execution is asked as a scalar setting and falls back to subagent
   const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(written, /^orhestra:\n[\s\S]*?^  execution: subagents$/m);
 
-  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\norhestra:\n  execution: single_propagated\n');
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\norhestra:\n  execution: main_propagated\n');
   await update({ cwd, output: silentOutput() });
   const preserved = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
-  assert.match(preserved, /^orhestra:\n[\s\S]*?^  execution: single_propagated$/m);
+  assert.match(preserved, /^orhestra:\n[\s\S]*?^  execution: main_propagated$/m);
+
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\norhestra:\n  execution: single_propagated\n');
+  await update({ cwd, output: silentOutput() });
+  const migrated = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(migrated, /^orhestra:\n[\s\S]*?^  execution: main_propagated$/m);
 });
 
 test('review execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
@@ -2482,19 +2485,19 @@ test('review execution is asked as a scalar setting and falls back to subagents 
     selectPrompt: async prompt => {
       messages.push(prompt.message);
       if (prompt.message === 'Как eda-review должен выполнять проверки по умолчанию?') {
-        assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'single']);
+        assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'main']);
         assert.equal(prompt.default, 'subagents');
-        return 'single';
+        return 'main';
       }
       if (prompt.message.startsWith('Какой моделью ')) {
-        throw new Error('single review settings must not ask per-check models');
+        throw new Error('main review settings must not ask per-check models');
       }
       return prompt.default;
     }
   });
 
   assert.equal(messages[0], 'Как eda-review должен выполнять проверки по умолчанию?');
-  assert.equal(settings.review.execution, 'single');
+  assert.equal(settings.review.execution, 'main');
 
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-review-execution-'));
   await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
@@ -2506,10 +2509,15 @@ test('review execution is asked as a scalar setting and falls back to subagents 
   const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(written, /^review:\n[\s\S]*?^  execution: subagents$/m);
 
-  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nreview:\n  execution: single\n');
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nreview:\n  execution: main\n');
   await update({ cwd, output: silentOutput() });
   const preserved = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
-  assert.match(preserved, /^review:\n[\s\S]*?^  execution: single$/m);
+  assert.match(preserved, /^review:\n[\s\S]*?^  execution: main$/m);
+
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\nreview:\n  execution: single\n');
+  await update({ cwd, output: silentOutput() });
+  const migrated = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(migrated, /^review:\n[\s\S]*?^  execution: main$/m);
 });
 
 test('manual-test depth is asked as a scalar setting and falls back to full for unknown values', async () => {
@@ -2548,21 +2556,21 @@ test('manual-test depth is asked as a scalar setting and falls back to full for 
   assert.match(written, /^manual-test:\n[\s\S]*?^  depth: full$/m);
 });
 
-test('eda-plan-execute supports subagents, single and auto execution modes', async () => {
+test('eda-plan-execute supports subagents, main and auto execution modes', async () => {
   const content = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
 
   assert.match(content, /Прочитай только раздел `plan-execute` из `docs\/settings\.yaml`/);
-  assert.match(content, /`plan-execute\.mode` принимает `subagents`, `single` или `auto`; при отсутствующем или невалидном значении используй `auto`/);
+  assert.match(content, /`plan-execute\.mode` принимает `subagents`, `main` или `auto`; при отсутствующем или невалидном значении используй `auto`/);
   assert.match(content, /без явного режима → `\$MODE=plan-execute\.mode` из валидных настроек, иначе `\$MODE=auto`/);
   assert.match(content, /Режим из вызова важнее настройки, настройка важнее умолчания/);
   assert.match(content, /## Режимы выполнения/);
-  assert.match(content, /`auto` выбирай `single`, только когда весь план реально помещается в один контекст/);
+  assert.match(content, /`auto` выбирай `main`, только когда весь план реально помещается в один контекст/);
   assert.match(content, /Иначе — `subagents`; при сомнении тоже `subagents`/);
   assert.match(content, /переключи оставшиеся фазы на `subagents`/);
   assert.match(content, /Если `\$MODE=auto`, сравни разобранные фазы с критериями из «Режимы выполнения» и зафиксируй итоговый режим/);
-  assert.match(content, /В `single` основной агент выполняет фазы и проверки сам/);
+  assert.match(content, /В `main` основной агент выполняет фазы и проверки сам/);
   assert.match(content, /Весь этап — только для `subagents`/);
-  assert.match(content, /Выполнять большой или тяжёлый по контексту план в `single`, если режим не задан явно/);
+  assert.match(content, /Выполнять большой или тяжёлый по контексту план в `main`, если режим не задан явно/);
 });
 
 test('eda-plan-execute forbids suppressing failing checks', async () => {
