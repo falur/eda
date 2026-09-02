@@ -2228,6 +2228,8 @@ test('readme lists packaged workflow skills', async () => {
 
   assert.match(content, /двадцать три скила/);
   assert.match(content, /`eda-flow`/);
+  assert.match(content, /### Полный цикл через `eda-flow`/);
+  assert.match(content, /`eda-plan-check-alignment`|eda-plan-check-alignment/);
   assert.match(content, /`eda-plan-check-executability`/);
   assert.match(content, /`eda-plan-meta-review`/);
   assert.match(content, /flow\.meta_model/);
