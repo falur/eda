@@ -921,6 +921,25 @@ test('askSettings returns default project settings without an interactive termin
         }
       ]
     },
+    flow: {
+      mode: 'automatic',
+      metaModel: 'fable',
+      planReview: {
+        enabled: true,
+        maxCycles: 1
+      },
+      execute: {
+        mode: 'auto'
+      },
+      manualTest: {
+        mode: 'auto',
+        maxCycles: 2
+      },
+      codeReview: {
+        enabled: true,
+        maxCycles: 1
+      }
+    },
     aim: {
       mode: 'automatic'
     },
@@ -959,7 +978,7 @@ test('askSettings returns default project settings without an interactive termin
 
   assert.deepEqual(settings.review.agents, {
     correctness: { mode: 'always', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
-    architecture: { mode: 'auto', model: { claude: 'opus', codex: 'gpt-5.6-sol' } },
+    architecture: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
     rules: { mode: 'always', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     references: { mode: 'auto', model: { claude: 'haiku', codex: 'gpt-5.6-luna' } },
     business: { mode: 'auto', model: { claude: 'sonnet', codex: 'gpt-5.6-terra' } },
@@ -1064,6 +1083,12 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /^  review: true$/m);
   assert.doesNotMatch(settings, /^  qa:/m);
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
+  assert.match(settings, /^flow:\n  # Режим ответов на рабочие вопросы eda-flow\.\n  # automatic \| manual\n  mode: automatic$/m);
+  assert.match(settings, /^  # Модель мета-ревьюера плана и ревьюера кода в eda-flow\.\n  # fable \| haiku \| sonnet \| opus\n  meta_model: fable$/m);
+  assert.match(settings, /^  plan_review:\n[^\n]*\n[^\n]*\n    enabled: true\n[^\n]*\n[^\n]*\n    max_cycles: 1$/m);
+  assert.match(settings, /^  execute:\n[^\n]*\n[^\n]*\n    mode: auto$/m);
+  assert.match(settings, /^  manual_test:\n[^\n]*\n[^\n]*\n    mode: auto\n[^\n]*\n[^\n]*\n    max_cycles: 2$/m);
+  assert.match(settings, /^  code_review:\n[^\n]*\n[^\n]*\n    enabled: true\n[^\n]*\n[^\n]*\n    max_cycles: 1$/m);
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
   assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
   assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 2$/m);
@@ -1283,6 +1308,7 @@ test('subagent orchestrators classify technical stops consistently', async () =>
   const orchestrators = [
     'eda-aim',
     'eda-commit',
+    'eda-flow',
     'eda-merge-worktree',
     'eda-orhestra',
     'eda-plan',
@@ -1529,7 +1555,7 @@ test('config-aware skills read docs/settings.yaml', async () => {
   assert.match(review, /`auto` — запускать только когда проверка применима/);
   assert.match(review, /`off` — не запускать/);
   assert.match(review, /Устаревшие поля `review\.strict`, `review\.include_code_quality` и раздел `review-check` не применяй/);
-  assert.match(review, /architecture.*`opus`.*`gpt-5\.6-sol`/s);
+  assert.match(review, /architecture.*`sonnet`.*`gpt-5\.6-terra`/s);
   assert.match(review, /frontend.*`sonnet`.*`gpt-5\.6-terra`/s);
 
   const sendReview = await fs.readFile(skillPath('eda-send-review'), 'utf8');
@@ -1963,7 +1989,7 @@ test('eda-review orchestrates specialized agents without legacy modes or cross c
 test('eda-review roles live in packaged agents with structured contracts', async () => {
   const expected = [
     ['correctness', 'sonnet', 'gpt-5.6-terra'],
-    ['architecture', 'opus', 'gpt-5.6-sol'],
+    ['architecture', 'sonnet', 'gpt-5.6-terra'],
     ['rules', 'haiku', 'gpt-5.6-luna'],
     ['references', 'haiku', 'gpt-5.6-luna'],
     ['business', 'sonnet', 'gpt-5.6-terra'],
@@ -2200,7 +2226,14 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists packaged workflow skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /двадцать два скила/);
+  assert.match(content, /двадцать три скила/);
+  assert.match(content, /`eda-flow`/);
+  assert.match(content, /### Полный цикл через `eda-flow`/);
+  assert.match(content, /`eda-plan-check-alignment`|eda-plan-check-alignment/);
+  assert.match(content, /`eda-plan-check-executability`/);
+  assert.match(content, /`eda-plan-meta-review`/);
+  assert.match(content, /flow\.meta_model/);
+  assert.match(content, /flow\.manual_test\.mode/);
   assert.match(content, /`eda-orhestra`/);
   assert.match(content, /orhestra\.steps/);
   assert.match(content, /args: "limit 5"/);
@@ -2444,6 +2477,66 @@ test('eda-plan-execute delegates whole phases, fixes, and checks while managing 
   assert.doesNotMatch(content, /Выполнять фазы волнами/);
   assert.doesNotMatch(content, /Запусти всех исполнителей волны/);
   assert.doesNotMatch(content, /codex exec/);
+});
+
+test('eda-flow ведёт три сессии без полировочных циклов', async () => {
+  const content = await fs.readFile(skillPath('eda-flow'), 'utf8');
+
+  assert.match(content, /^name: eda-flow$/m);
+  assert.match(content, /eda-plan-check-executability/);
+  assert.match(content, /eda-plan-check-alignment/);
+  assert.match(content, /eda-plan-check-feasibility/);
+  assert.match(content, /eda-plan-meta-review/);
+  assert.match(content, /flow\.meta_model/);
+  assert.match(content, /flow\.plan_review\.max_cycles/);
+  assert.match(content, /flow\.manual_test\.mode/);
+  assert.match(content, /flow\.code_review\.max_cycles/);
+  assert.match(content, /version: 3/);
+  assert.match(content, /`eda-plan-polish` и `eda-polish` не запускаются ни при каких аргументах/);
+  assert.match(content, /только при визуальных изменениях/);
+  assert.match(content, /Plan Mode и подтверждение плана человеком требуют основной сессии/);
+  assert.match(content, /spawn_agent` с `fork_turns: "none"/);
+  assert.match(content, /blocked: недоступна изоляция сессии/);
+  assert.match(content, /Коммит в цикл не входит/);
+  assert.doesNotMatch(content, /^\s*- id: /m, 'eda-flow не настраивается через orhestra.steps');
+});
+
+test('проверки плана для eda-flow живут в пакетных агентах со структурными контрактами', async () => {
+  const expected = [
+    ['eda-plan-check-executability', 'sonnet', 'gpt-5.6-terra', 'executability'],
+    ['eda-plan-check-alignment', 'sonnet', 'gpt-5.6-terra', 'alignment'],
+    ['eda-plan-check-feasibility', 'sonnet', 'gpt-5.6-terra', 'feasibility']
+  ];
+
+  for (const [name, claude, codex, check] of expected) {
+    const dir = path.join(AGENTS_SRC, name);
+    const config = JSON.parse(await fs.readFile(path.join(dir, 'agent.json'), 'utf8'));
+    const prompt = await fs.readFile(path.join(dir, 'prompt.md'), 'utf8');
+
+    assert.equal(config.name, name);
+    assert.equal(config.models.claude, claude);
+    assert.equal(config.models.codex, codex);
+    assert.equal(config.access, 'read-only');
+    assert.match(prompt, /Верни один YAML-блок/);
+    assert.match(prompt, new RegExp(`check: ${check}`));
+    assert.match(prompt, /находки:/);
+    assert.match(prompt, /PLAN_FILE/);
+    assert.match(prompt, /Не правь файлы/);
+    assert.doesNotMatch(prompt, /recommendation:/);
+  }
+
+  const metaConfig = JSON.parse(
+    await fs.readFile(path.join(AGENTS_SRC, 'eda-plan-meta-review', 'agent.json'), 'utf8')
+  );
+  const metaPrompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-plan-meta-review', 'prompt.md'), 'utf8');
+
+  assert.equal(metaConfig.models.claude, 'fable');
+  assert.equal(metaConfig.access, 'workspace-write');
+  assert.match(metaPrompt, /docs\/artifacts\/plan-reviews\//);
+  assert.match(metaPrompt, /Собственную полную проверку плана заново не проводи/);
+  assert.match(metaPrompt, /plan_status: ready \| changes-required/);
+  assert.match(metaPrompt, /Отклонено/);
+  assert.match(metaPrompt, /Пиши только этот файл/);
 });
 
 test('update renders platform skill copies from packaged sources', async () => {

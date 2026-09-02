@@ -34,7 +34,7 @@ description: 'Проводит полное read-only ревью diff, ветк�
 | Проверка | Default mode | Claude | Codex |
 |---|---|---|---|
 | `correctness` | `always` | `sonnet` | `gpt-5.6-terra` |
-| `architecture` | `auto` | `opus` | `gpt-5.6-sol` |
+| `architecture` | `auto` | `sonnet` | `gpt-5.6-terra` |
 | `rules` | `always` | `haiku` | `gpt-5.6-luna` |
 | `references` | `auto` | `haiku` | `gpt-5.6-luna` |
 | `business` | `auto` | `sonnet` | `gpt-5.6-terra` |
