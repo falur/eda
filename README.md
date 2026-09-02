@@ -202,9 +202,12 @@ flow:
   # Режим ответов на рабочие вопросы eda-flow.
   # automatic | manual
   mode: automatic
-  # Модель мета-ревьюера плана и ревьюера кода в eda-flow.
-  # fable | haiku | sonnet | opus
-  meta_model: fable
+  meta_model:
+    # Модель мета-ревьюера плана и ревьюера кода в eda-flow.
+    # Модель для Claude Code: fable | haiku | sonnet | opus
+    claude: fable
+    # Модель для Codex: gpt-5.6-luna | gpt-5.6-terra | gpt-5.6-sol
+    codex: gpt-5.6-sol
   plan_review:
     # Запускает проверки плана и мета-ревью в первой сессии.
     # true | false
@@ -214,8 +217,9 @@ flow:
     max_cycles: 1
   execute:
     # Режим, который eda-flow передаёт eda-plan-execute.
-    # single | subagents | auto
-    mode: auto
+    # inherit не передаёт режим и оставляет решение за plan-execute.mode.
+    # inherit | single | subagents | auto
+    mode: inherit
   manual_test:
     # Когда запускать eda-manual-test во второй сессии.
     # auto — только при визуальных изменениях, always — всегда, off — не запускать.
@@ -427,9 +431,9 @@ discover-automations:
 - Старое значение `steps[].skill: eda-execute` во время запуска автоматически понимается как `eda-plan-execute`; существующий `docs/settings.yaml` установщик не переписывает.
 - `steps[].on_failure` — настраивает исправление failed manual-test прямо рядом с этим шагом: `skill` и `args` задают фикс, `then` — повторяемые id шагов, `max_cycles` — лимит. Если обработчика нет, оркестратор сохраняет failed-отчёт и останавливается.
 - `flow.mode` — `automatic` закрывает обратимые рабочие решения цикла сам; `manual` передаёт вопросы шагов человеку.
-- `flow.meta_model` — модель мета-ревьюера плана и ревьюера кода в `eda-flow`; остальные проверки идут на своих моделях.
-- `flow.plan_review.enabled` и `flow.plan_review.max_cycles` — три параллельные проверки плана с мета-ревью и предел кругов «правка плана → мета-ревью».
-- `flow.execute.mode` — режим, который `eda-flow` передаёт `eda-plan-execute`.
+- `flow.meta_model.claude` и `.codex` — модель мета-ревьюера плана и ревьюера кода в `eda-flow` для каждой среды; остальные проверки идут на своих моделях из `review.agents`.
+- `flow.plan_review.enabled` и `flow.plan_review.max_cycles` — три параллельные проверки плана с мета-ревью и предел кругов «правка плана → мета-ревью». Готовность плана определяет отсутствие принятых находок, а не порог: `plan-review.threshold` относится к отдельному скилу `eda-plan-review`.
+- `flow.execute.mode` — режим для `eda-plan-execute`; `inherit` ничего не передаёт, и решение остаётся за `plan-execute.mode` проекта.
 - `flow.manual_test.mode` и `flow.manual_test.max_cycles` — когда запускать ручную проверку и сколько раз повторять «`eda-fix` → `eda-manual-test`»; `auto` запускает её только при визуальных изменениях.
 - `flow.code_review.enabled` и `flow.code_review.max_cycles` — третья сессия и предел кругов «`eda-review` → `eda-fix-by-review`».
 - `aim.mode` — `automatic` самостоятельно выбирает безопасные ответы на рабочие вопросы; `manual` передаёт вопросы человеку. Явный режим в текущем вызове имеет приоритет.
@@ -541,11 +545,13 @@ discover-automations может запускаться от review, fix-by-revie
 
 Что происходит внутри:
 
-- **Сессия 1** идёт в текущем контексте: `eda-plan` создаёт план, затем параллельно работают `eda-plan-check-executability`, `eda-plan-check-alignment` и `eda-plan-check-feasibility`, а `eda-plan-meta-review` на `flow.meta_model` сводит их результаты, считает score и сохраняет отчёт в `docs/artifacts/plan-reviews/`. При `changes-required` план правит `eda-plan-review-fix`, и круг повторяется в пределах `flow.plan_review.max_cycles`.
+- **Сессия 1** идёт в текущем контексте: `eda-plan` создаёт план, затем параллельно работают `eda-plan-check-executability` (исполнимость по тексту плана), `eda-plan-check-alignment` (запрос, правила, архитектура, полнота карточек) и `eda-plan-check-feasibility` (реальный код). `eda-plan-meta-review` на `flow.meta_model` сводит их результаты в один чек-лист: пункты исполнимости идут как `E<номер>`, принятые находки соответствия и реализуемости — как `A<n>` и `F<n>`. Score считается по всему чек-листу, готовность — отсутствие принятых находок. Отчёт сохраняется в `docs/artifacts/plan-reviews/`, при `ready` в плане обновляются `status: reviewed` и `plan_review`. При `changes-required` план правит `eda-plan-review-fix` — он закрывает все строки `fail`, включая находки соответствия и реализуемости. На повторном круге исполнимость проверяется всегда, а соответствие и реализуемость — только если у них были находки.
 - **Сессия 2** — отдельный субагент со свежим контекстом: читает `CLAUDE.md` или `AGENTS.md`, `docs/rules.md`, `docs/arch.md` и применимые карточки, выполняет `eda-plan-execute`, при визуальных изменениях запускает `eda-manual-test`, а по её `failed` — `eda-fix` и повторную проверку.
-- **Сессия 3** — субагент на `flow.meta_model` выполняет `eda-review`: специализированные роли работают на своих моделях из `review.agents`, а сводит находки мета-модель. При `changes-required` второй субагент применяет их через `eda-fix-by-review`.
+- **Сессия 3** — субагент на `flow.meta_model` выполняет контракт `eda-review`, читая его `SKILL.md` файлом: специализированные роли работают на своих моделях из `review.agents`, а сводит находки мета-модель. Target ограничен изменениями цикла, поэтому чужие незакоммиченные правки в ревью не попадают. При `changes-required` второй субагент применяет находки через `eda-fix-by-review`; отклонённые им находки попадают в финальный отчёт с причинами.
 
-Разовые аргументы в сообщении важнее настроек: `без ревью плана`, `без ручных тестов`, `с ручными тестами`, `без ревью кода`, `execute single`, `execute subagents`, `manual-test smoke`, `кругов ревью 2`, `manual`. Готовый план можно передать путём — тогда `eda-plan` пропускается.
+Разовые аргументы в сообщении важнее настроек: `без ревью плана`, `без ручных тестов`, `с ручными тестами`, `без ревью кода`, `только план`, `начни с выполнения`, `execute single`, `execute subagents`, `manual-test smoke`, `кругов ревью 2`, `manual`. Цикл отделяет их от текста задачи и в план передаёт только саму задачу. Готовый план можно передать путём — тогда `eda-plan` пропускается.
+
+У субагентов сессий нет интерактивного канала: вопрос любого скила они возвращают в поле `questions`, основной агент передаёт его тебе и продолжает того же субагента с ответом.
 
 Цикл не коммитит, не пушит, не создаёт PR, не отправляет ревью и не меняет `docs/settings.yaml`.
 

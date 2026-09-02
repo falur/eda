@@ -923,13 +923,16 @@ test('askSettings returns default project settings without an interactive termin
     },
     flow: {
       mode: 'automatic',
-      metaModel: 'fable',
+      metaModel: {
+        claude: 'fable',
+        codex: 'gpt-5.6-sol'
+      },
       planReview: {
         enabled: true,
         maxCycles: 1
       },
       execute: {
-        mode: 'auto'
+        mode: 'inherit'
       },
       manualTest: {
         mode: 'auto',
@@ -1084,9 +1087,9 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.doesNotMatch(settings, /^  qa:/m);
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
   assert.match(settings, /^flow:\n  # Режим ответов на рабочие вопросы eda-flow\.\n  # automatic \| manual\n  mode: automatic$/m);
-  assert.match(settings, /^  # Модель мета-ревьюера плана и ревьюера кода в eda-flow\.\n  # fable \| haiku \| sonnet \| opus\n  meta_model: fable$/m);
+  assert.match(settings, /^  meta_model:\n[^\n]*\n[^\n]*\n    claude: fable\n[^\n]*\n    codex: gpt-5\.6-sol$/m);
   assert.match(settings, /^  plan_review:\n[^\n]*\n[^\n]*\n    enabled: true\n[^\n]*\n[^\n]*\n    max_cycles: 1$/m);
-  assert.match(settings, /^  execute:\n[^\n]*\n[^\n]*\n    mode: auto$/m);
+  assert.match(settings, /^  execute:\n[^\n]*\n[^\n]*\n[^\n]*\n    mode: inherit$/m);
   assert.match(settings, /^  manual_test:\n[^\n]*\n[^\n]*\n    mode: auto\n[^\n]*\n[^\n]*\n    max_cycles: 2$/m);
   assert.match(settings, /^  code_review:\n[^\n]*\n[^\n]*\n    enabled: true\n[^\n]*\n[^\n]*\n    max_cycles: 1$/m);
   assert.match(settings, /^review:\n  # Каждая проверка имеет собственный режим запуска и модели для обеих сред\.\n  agents:/m);
@@ -2498,6 +2501,13 @@ test('eda-flow ведёт три сессии без полировочных ц
   assert.match(content, /spawn_agent` с `fork_turns: "none"/);
   assert.match(content, /blocked: недоступна изоляция сессии/);
   assert.match(content, /Коммит в цикл не входит/);
+  assert.match(content, /\$TASK_TEXT/);
+  assert.match(content, /Интерактивных вопросов у тебя нет/);
+  assert.match(content, /читает установленный `SKILL\.md` как файл/);
+  assert.match(content, /blocked: пункт требует роста плана/);
+  assert.match(content, /`plan-review\.threshold`.*в этом цикле не применяется/s);
+  assert.match(content, /`inherit` не передаёт ничего/);
+  assert.match(content, /git status --short/);
   assert.doesNotMatch(content, /^\s*- id: /m, 'eda-flow не настраивается через orhestra.steps');
 });
 
@@ -2536,7 +2546,37 @@ test('проверки плана для eda-flow живут в пакетных
   assert.match(metaPrompt, /Собственную полную проверку плана заново не проводи/);
   assert.match(metaPrompt, /plan_status: ready \| changes-required/);
   assert.match(metaPrompt, /Отклонено/);
-  assert.match(metaPrompt, /Пиши только этот файл/);
+  assert.match(metaPrompt, /Кроме этого отчёта пиши только одно/);
+  assert.match(metaPrompt, /`E<номер>`/);
+  assert.match(metaPrompt, /`A<n>`/);
+  assert.match(metaPrompt, /`F<n>`/);
+  assert.match(metaPrompt, /если находка по пункту отклонена, строка становится `pass`/);
+  assert.match(metaPrompt, /тогда и только тогда, когда не осталось ни одной принятой находки/);
+  assert.match(metaPrompt, /план целиком не открывай/);
+  assert.match(metaPrompt, /PREVIOUS_REVIEW/);
+  assert.match(metaPrompt, /growth_items/);
+});
+
+test('проверки плана не дублируют зоны и закрывают полноту sources', async () => {
+  const executability = await fs.readFile(
+    path.join(AGENTS_SRC, 'eda-plan-check-executability', 'prompt.md'), 'utf8'
+  );
+  const alignment = await fs.readFile(
+    path.join(AGENTS_SRC, 'eda-plan-check-alignment', 'prompt.md'), 'utf8'
+  );
+  const feasibility = await fs.readFile(
+    path.join(AGENTS_SRC, 'eda-plan-check-feasibility', 'prompt.md'), 'utf8'
+  );
+
+  assert.doesNotMatch(executability, /Каждая часть запроса покрыта планом/);
+  assert.doesNotMatch(executability, /RESEARCH_FILE/);
+  assert.match(executability, /в репозиторий не заглядыва|Существование команды в репозитории проверяет/);
+  assert.match(alignment, /TASK_TEXT/);
+  assert.match(alignment, /Каждая часть `TASK_TEXT`/);
+  assert.match(alignment, /kind: sources/);
+  assert.match(alignment, /status: completed \| blocked/);
+  assert.doesNotMatch(alignment, /not_applicable/);
+  assert.match(feasibility, /Существование команд, файлов, символов и зависимостей проверяешь ты один/);
 });
 
 test('update renders platform skill copies from packaged sources', async () => {
