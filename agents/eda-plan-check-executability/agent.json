@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-plan-check-executability",
+  "description": "Проверяет исполнимость плана по фиксированному чек-листу готовности для eda-flow.",
+  "models": {
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
+  },
+  "reasoning": {
+    "claude": "medium",
+    "codex": "medium"
+  },
+  "access": "read-only"
+}

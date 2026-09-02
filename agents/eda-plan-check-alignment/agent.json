@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-plan-check-alignment",
+  "description": "Проверяет соответствие плана запросу, правилам, архитектуре и применимым карточкам проекта для eda-flow.",
+  "models": {
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
+  },
+  "reasoning": {
+    "claude": "medium",
+    "codex": "medium"
+  },
+  "access": "read-only"
+}

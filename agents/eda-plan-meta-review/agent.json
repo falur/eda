@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-plan-meta-review",
+  "description": "Сводит результаты проверок плана в одно мета-ревью со score и сохраняет отчёт для eda-flow.",
+  "models": {
+    "claude": "fable",
+    "codex": "gpt-5.6-sol"
+  },
+  "reasoning": {
+    "claude": "high",
+    "codex": "high"
+  },
+  "access": "workspace-write"
+}
