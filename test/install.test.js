@@ -1279,6 +1279,23 @@ test('all packaged eda skills keep trigger descriptions concise', async () => {
   }
 });
 
+test('eda-just-do-it executes the inline task with selective context and a mandatory report', async () => {
+  const content = await fs.readFile(skillPath('eda-just-do-it'), 'utf8');
+
+  assert.match(content, /Текст рядом с вызовом скилла в текущем сообщении пользователя — главный вход/);
+  assert.match(content, /Не заменяй выполнение планом, исследованием или ревью/);
+  assert.match(content, /Не отправляй пользователя к другому `eda-\*`-скилу/);
+  assert.match(content, /Прочитай применимые `AGENTS\.md`/);
+  assert.match(content, /прочитай `docs\/rules\.md` и `docs\/arch\.md`/);
+  assert.match(content, /только применимые business-карточки/);
+  assert.match(content, /только карточки затронутых компонентов/);
+  assert.match(content, /Создай отчёт до первого содержательного изменения/);
+  assert.match(content, /docs\/artifacts\/just-do-it\//);
+  assert.match(content, /`done`, `partial`, `blocked` или `failed`/);
+  assert.match(content, /Даже если задача завершилась до изменений, оказалась заблокирована или упала, отчёт должен существовать/);
+  assert.match(content, /Не коммить, не пушь, не создавай PR, не публикуй и не деплой без прямого указания/);
+});
+
 test('all packaged agents use the supported metadata schema', async () => {
   const expectedKeys = ['access', 'description', 'models', 'name', 'reasoning', 'schemaVersion'];
 
@@ -2267,7 +2284,7 @@ test('worktree skills document naming and merge contract', async () => {
 test('readme lists packaged workflow skills', async () => {
   const content = await fs.readFile(path.join(ROOT, 'README.md'), 'utf8');
 
-  assert.match(content, /двадцать два скила/);
+  assert.match(content, /двадцать три скила/);
   assert.match(content, /`eda-orhestra`/);
   assert.match(content, /orhestra\.steps/);
   assert.match(content, /args: "limit 5"/);
@@ -2279,6 +2296,8 @@ test('readme lists packaged workflow skills', async () => {
   assert.match(content, /`eda-plan-polish`/);
   assert.match(content, /`eda-plan-review`/);
   assert.match(content, /`eda-plan-review-fix`/);
+  assert.match(content, /`eda-just-do-it`/);
+  assert.match(content, /docs\/artifacts\/just-do-it/);
   assert.match(content, /`eda-manual-test`/);
   assert.match(content, /docs\/artifacts\/manual-tests/);
   assert.match(content, /`eda-worktree`/);
