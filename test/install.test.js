@@ -950,7 +950,7 @@ test('askSettings returns default project settings without an interactive termin
       threshold: 100
     },
     planPolish: {
-      limit: 2
+      limit: 1
     },
     planExecute: {
       mode: 'auto'
@@ -1078,7 +1078,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /^aim:\n  # Режим ответов на рабочие вопросы eda-aim\.\n  # automatic \| manual\n  mode: automatic$/m);
   assert.match(settings, /^review:\n  # Где eda-review выполняет выбранные проверки\.\n[^\n]*\n  execution: subagents\n  # Каждая проверка имеет собственный режим запуска; модели применяются только в subagents\.\n  agents:/m);
   assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
-  assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 2$/m);
+  assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 1$/m);
   assert.match(settings, /^plan-execute:\n  # Где eda-plan-execute выполняет фазы плана\.\n[^\n]*\n  mode: auto$/m);
   assert.match(settings, /^manual-test:\n  # Глубина ручной проверки в eda-manual-test\.\n[\s\S]*?^  # full \| smoke \| ask_each_time\n  depth: full$/m);
   assert.match(settings, /^plan-review:\n[^\n]*\n[^\n]*\n  threshold: 100\n\nplan-polish:$/m, 'plan-review must not expose agents');
@@ -1971,10 +1971,11 @@ test('eda-plan-polish uses bounded specialized review and fix iterations', async
   const content = await fs.readFile(skillPath('eda-plan-polish'), 'utf8');
 
   assert.match(content, /name: eda-plan-polish/);
-  assert.match(content, /`eda-plan-review` → `eda-plan-review-fix` → подтверждающий `eda-plan-review`/);
+  assert.match(content, /Оркестрируй цикл `eda-plan-review` → `eda-plan-review-fix`/);
   assert.match(content, /plan-review\.threshold.*default `100`/);
-  assert.match(content, /plan-polish\.limit.*default `2`/);
-  assert.match(content, /fix не запускай, перепроверить его будет нечем/);
+  assert.match(content, /plan-polish\.limit.*default `1`/);
+  assert.match(content, /`limit 1` означает одну проверку и одно исправление/);
+  assert.match(content, /Отдельного подтверждающего прохода нет/);
   assert.match(content, /score не вырос относительно предыдущей — останови цикл/);
   assert.match(content, /восстанови лучшую версию/);
   assert.match(content, /Score сам не считай и не корректируй/);
