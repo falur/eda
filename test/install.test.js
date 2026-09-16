@@ -2593,11 +2593,11 @@ test('eda-plan-execute supports subagents, main and auto execution modes', async
   assert.match(content, /## Режимы выполнения/);
   assert.match(content, /`auto` выбирай `main`, только когда весь план реально помещается в один контекст/);
   assert.match(content, /Иначе — `subagents`; при сомнении тоже `subagents`/);
-  assert.match(content, /переключи оставшиеся фазы на `subagents`/);
+  assert.doesNotMatch(content, /переключи оставшиеся фазы на `subagents`/);
   assert.match(content, /Если `\$MODE=auto`, сравни разобранные фазы с критериями из «Режимы выполнения» и зафиксируй итоговый режим/);
   assert.match(content, /В `main` основной агент выполняет фазы и проверки сам/);
   assert.match(content, /Весь этап — только для `subagents`/);
-  assert.match(content, /Выполнять большой или тяжёлый по контексту план в `main`, если режим не задан явно/);
+  assert.doesNotMatch(content, /Выполнять большой или тяжёлый по контексту план в `main`, если режим не задан явно/);
 });
 
 test('eda-plan-execute forbids suppressing failing checks', async () => {
