@@ -2147,6 +2147,7 @@ test('eda-plan-review использует один обязательный к�
   assert.match(review, /score     = round\(100 \* закрыто \/ всего\)/);
   assert.match(review, /Score не выставляй экспертно и не корректируй вручную/);
   assert.match(review, /Не запускай субагентов/);
+  assert.match(review, /`Интерфейс и дизайн` и `Консольные команды`/);
   assert.doesNotMatch(review, /eda-plan-review-<check>|усредняй score/);
 
   assert.match(fix, /Закрой каждый пункт со статусом `fail`/);
@@ -2180,14 +2181,20 @@ test('eda-review-business checks applicable business rules without replacing tas
   assert.match(prompt, /business-карточка.*код, diff, задача или план/s);
 });
 
-test('eda-plan requires implementation contracts for data and api changes', async () => {
+test('eda-plan requires implementation contracts for data, api, interface, and cli changes', async () => {
   const content = await fs.readFile(skillPath('eda-plan'), 'utf8');
 
   assert.match(content, /## Контракты реализации/);
   assert.match(content, /### Данные и БД/);
   assert.match(content, /### API и внешние контракты/);
+  assert.match(content, /### Интерфейс и дизайн/);
+  assert.match(content, /### Консольные команды/);
   assert.match(content, /таблицы, поля, типы, обязательность, default, связи, индексы/);
   assert.match(content, /метод и путь, auth\/permissions, request\/query\/body, response/);
+  assert.match(content, /макеты или референсы; если их нет — текущий дизайн проекта/);
+  assert.match(content, /свободный текст или таблица `Страница \| Описание дизайна`/);
+  assert.match(content, /Не повторяй здесь целевой алгоритм и содержание фаз/);
+  assert.match(content, /\| Команда \| Аргументы и опции \| Назначение \|/);
   assert.match(content, /если конкретные схемы БД или API-контракты не подтверждены явно/);
   assert.match(content, /получи подтверждение пользователя/);
   assert.match(content, /не проектируй таблицы и маршруты молча внутри Plan Mode/);
