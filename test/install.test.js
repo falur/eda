@@ -1822,6 +1822,13 @@ test('eda-commit delegates the full commit flow to one simple agent', async () =
   assert.match(executorPrompt, /чужие staged-изменения не должны попасть в текущий коммит/);
   assert.match(executorPrompt, /После последнего коммита проверь, что из выбранного состава ничего не осталось/);
   assert.match(executorPrompt, /общие слова вроде `changes`, `updates` и «правки»/);
+  assert.match(executorPrompt, /## Форма сообщений/);
+  assert.match(executorPrompt, /Бери форму только из `AGENTS\.md`, `CLAUDE\.md` и `docs\/rules\.md`/);
+  assert.match(executorPrompt, /Если ни один из этих трёх файлов о сообщениях не говорит, повтори форму 2–3 последних коммитов/);
+  assert.match(executorPrompt, /Остальные документы проекта форму не задают/);
+  assert.match(executorPrompt, /Та же форма действует для заголовка и описания PR/);
+  assert.match(executorPrompt, /форма — по разделу «Форма сообщений», содержание — по фактическому кандидату/);
+  assert.match(content, /Форму этих текстов — язык, вид заголовка, префиксы, части тела — он берёт из `AGENTS\.md`, `CLAUDE\.md` и `docs\/rules\.md`/);
   assert.match(executorPrompt, /по полному `USER_REQUEST`, фактическим коммитам текущей ветки относительно base и итоговому diff/);
   assert.match(executorPrompt, /следуй найденному шаблону PR/);
   assert.match(executorPrompt, /перечисли только реально выполненные команды и их результат/);
