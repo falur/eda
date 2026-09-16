@@ -19,14 +19,21 @@ description: 'Создаёт понятный исполнимый план ре
 | `plan.review` | `true`, `false` | включение: `с ревью плана`, `с plan-review`; выключение: `без ревью плана`, `без plan-review` |
 | `plan.size` | `normal`, `short`, `ask_each_time` | `short`; обычный: `обычный план`, `не short` |
 | `plan.decision_mode` | `autonomous`, `recommend_and_ask`, `ask_each_time` | `autonomous`, `recommend_and_ask`, `ask_each_time`, «сам выбирай», «рекомендуй и спрашивай», «спрашивай всё» |
-| `plan.test_strategy` | `after_each_phase`, `tdd_each_phase`, `end_of_plan`, `ask_each_time` | явное указание стратегии тестов |
+| `plan.test_strategy` | `after_each_phase`, `phase_tests_final_checks`, `tdd_each_phase`, `end_of_plan`, `ask_each_time` | явное указание стратегии тестов и проверок |
 | `plan.logging_strategy` | `debug_precise`, `standard`, `ask_each_time` | явное указание стратегии логирования |
 
 Если итоговое значение `plan.size`, `plan.test_strategy` или `plan.logging_strategy` равно `ask_each_time`, задай блокирующий вопрос, кроме случая, когда пользователь уже выбрал значение в текущем сообщении.
 
-Варианты вопросов: размер плана — `normal` / `short`; тесты — `after_each_phase` / `tdd_each_phase` / `end_of_plan`; логирование — `debug_precise` / `standard`.
+Варианты вопросов: размер плана — `normal` / `short`; тесты и проверки — `after_each_phase` / `phase_tests_final_checks` / `tdd_each_phase` / `end_of_plan`; логирование — `debug_precise` / `standard`.
 
-`test_strategy` обязан менять план: `tdd_each_phase` начинает каждую фазу с тестов, `after_each_phase` добавляет тесты после реализации каждой фазы, `end_of_plan` выносит тесты в отдельную финальную фазу. `logging_strategy` обязан отражаться в алгоритме, фазах и разделе `Логирование`.
+Имя `test_strategy` сохраняется для совместимости, но настройка управляет и написанием тестов, и моментом запуска автоматических проверок. Она обязана менять план:
+
+- `tdd_each_phase` начинает каждую фазу с тестов, затем выполняет реализацию и запускает написанные тесты вместе со всеми применимыми проверками фазы;
+- `after_each_phase` сначала выполняет реализацию, затем добавляет тесты и запускает их вместе со всеми применимыми проверками фазы;
+- `phase_tests_final_checks` добавляет тесты в ту же фазу, что и реализацию; в `Проверке` фазы оставляет только точечный запуск добавленных или изменённых в ней тестов, а полный набор тестов, линтеры, typecheck, static analysis и остальные обязательные проверки переносит в финальную проверку всего плана;
+- `end_of_plan` выносит написание тестов и первый запуск всех автоматических проверок в отдельную финальную фазу; предыдущие фазы подтверждаются только указанными неавтоматическими критериями готовности.
+
+`logging_strategy` обязан отражаться в алгоритме, фазах и разделе `Логирование`.
 
 `без проверок` одновременно устанавливает `plan.review: false` и `plan.strict: false`. `plan.review` и `plan.strict` независимы.
 
@@ -120,7 +127,7 @@ status: <draft | meta-reviewed | reviewed>
 reviewer: <pending | none | claude | codex>
 plan_review: <docs/artifacts/plan-reviews/... | none>
 plan_review_fix: <docs/artifacts/plan-review-fixes/... | none>
-test_strategy: <after_each_phase | tdd_each_phase | end_of_plan>
+test_strategy: <after_each_phase | phase_tests_final_checks | tdd_each_phase | end_of_plan>
 logging_strategy: <debug_precise | standard>
 sources:
   rules: <путь или —>
@@ -158,8 +165,8 @@ sources:
 Проверка:
 - команда или критерий готовности.
 
-## Тесты
-Стратегия и сценарии по поведению — в одном месте, а не внутри каждой фазы.
+## Тесты и проверки
+Стратегия, сценарии по поведению, фазовые и финальные команды — в одном месте, а не дублируются внутри каждой фазы. В поле `Проверка` фазы остаётся только применимый к ней запуск или критерий согласно `test_strategy`.
 
 ## Логирование
 Стратегия, уровни, обязательные поля и что писать запрещено.

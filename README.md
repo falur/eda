@@ -225,8 +225,8 @@ plan:
   # Определяет, как eda-plan принимает существенные решения.
   # autonomous | recommend_and_ask | ask_each_time
   decision_mode: recommend_and_ask
-  # Задаёт стратегию тестов.
-  # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time
+  # Задаёт стратегию тестов и автоматических проверок.
+  # after_each_phase | phase_tests_final_checks | tdd_each_phase | end_of_plan | ask_each_time
   test_strategy: ask_each_time
   # Задаёт стратегию логирования.
   # debug_precise | standard | ask_each_time
@@ -400,7 +400,7 @@ discover-automations:
 - `aim.mode` — `automatic` самостоятельно выбирает безопасные ответы на рабочие вопросы; `manual` передаёт вопросы человеку. Явный режим в текущем вызове имеет приоритет.
 - `explore.strict` и `explore.decision_mode` — кросс-CLI ревью и способ выбора по исследовательским развилкам в `eda-explore`.
 - `plan.review` — изолированный цикл `eda-plan-polish` внутри `eda-plan`, ровно одна итерация полировки (`limit 1`); `plan.strict` независимо управляет кросс-CLI ревью.
-- `plan.size`, `plan.decision_mode`, `plan.test_strategy`, `plan.logging_strategy` — режим и структура работы `eda-plan`.
+- `plan.size`, `plan.decision_mode`, `plan.test_strategy`, `plan.logging_strategy` — режим и структура работы `eda-plan`. Имя `test_strategy` сохранено для совместимости, но настройка управляет и тестами, и автоматическими проверками: `after_each_phase` запускает их после каждой фазы, `tdd_each_phase` сначала пишет тесты и после реализации запускает все проверки фазы, `phase_tests_final_checks` в фазе запускает только добавленные или изменённые ею тесты, а остальные проверки оставляет финалу, `end_of_plan` переносит тесты и автоматические проверки в конец плана.
 - `plan-review.threshold` — доля закрытых пунктов чек-листа для статуса `ready`, default `100`. Отдельных агентов у `plan-review` больше нет: проверку целиком делает один субагент.
 - `plan-polish.limit` — максимальное число итераций «проверка + исправление»; default `1`. Отдельного подтверждающего прохода нет: исправление проверяет ревью следующей итерации. Цикл останавливается раньше, если score перестал расти.
 - `plan-execute.mode` — где `eda-plan-execute` выполняет фазы: `subagents` — каждая фаза в отдельном изолированном субагенте с независимой проверкой, `main` — весь план одним контекстом без субагентов, `auto` — выбор по плану; default `auto`. Явный режим в вызове имеет приоритет.

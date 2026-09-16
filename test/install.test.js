@@ -1033,6 +1033,37 @@ test('interactive plan settings can disable plan-review independently', async ()
   assert.equal(settings.plan.review, false);
 });
 
+test('interactive plan settings offer phased tests with final checks', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['plan'],
+    checkboxPrompt: async prompt => prompt.choices
+      .filter(choice => choice.checked)
+      .map(choice => choice.value),
+    selectPrompt: async prompt => {
+      if (prompt.message === 'Какую стратегию тестов и проверок eda-plan использовать по умолчанию?') {
+        assert.deepEqual(prompt.choices.map(choice => choice.value), [
+          'after_each_phase',
+          'phase_tests_final_checks',
+          'tdd_each_phase',
+          'end_of_plan',
+          'ask_each_time'
+        ]);
+        return 'phase_tests_final_checks';
+      }
+      return prompt.default;
+    }
+  });
+
+  assert.equal(settings.plan.testStrategy, 'phase_tests_final_checks');
+});
+
 test('interactive review settings ask mode and per-platform models for enabled checks', async () => {
   const messages = [];
   const reviewAgents = await askReviewAgentSettings({
@@ -1235,6 +1266,7 @@ aim:
 plan:
   review: false
   size: short
+  test_strategy: phase_tests_final_checks
 plan-execute:
   mode: main
 manual-test:
@@ -1249,6 +1281,7 @@ manual-test:
   assert.match(settings, /^aim:\n[\s\S]*?^  mode: manual$/m);
   assert.match(settings, /^  review: false$/m);
   assert.match(settings, /^  size: short$/m);
+  assert.match(settings, /^  test_strategy: phase_tests_final_checks$/m);
   assert.match(settings, /^plan-review:/m);
   assert.match(settings, /^plan-polish:/m);
   assert.match(settings, /^plan-execute:\n[\s\S]*?^  mode: main$/m);
@@ -1511,6 +1544,18 @@ test('eda-plan schedules business rule documentation before dependent implementa
   assert.match(content, /до соответствующей реализации отдельную фазу или пункт/);
   assert.match(content, /Чисто техническое изменение без изменения целевого поведения этого не требует/);
   assert.match(content, /каждый отсутствующий, неполный или расширяемый пункт целевого поведения покрыт отдельной задачей/);
+});
+
+test('eda-plan test strategies also control phase and final checks', async () => {
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const execute = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
+
+  assert.match(plan, /`phase_tests_final_checks`/);
+  assert.match(plan, /Имя `test_strategy` сохраняется для совместимости, но настройка управляет и написанием тестов, и моментом запуска автоматических проверок/);
+  assert.match(plan, /## Тесты и проверки/);
+  assert.match(execute, /`test_strategy` управляет не только написанием тестов, но и фазовыми проверками/);
+  assert.match(execute, /`phase_tests_final_checks` \| написать тесты в фазе, но запустить только добавленные или изменённые этой фазой тесты; остальные проверки отложить/);
+  assert.match(execute, /Для `phase_tests_final_checks` и `end_of_plan` это первый полный прогон/);
 });
 
 test('config-aware skills read docs/settings.yaml', async () => {
