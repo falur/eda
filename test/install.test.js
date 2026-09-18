@@ -542,6 +542,29 @@ test('updateAll skip migrates old settings and creates defaults only when missin
   assert.doesNotMatch(stdout, /Какие настройки включить|Настройки будут запрошены/);
 });
 
+test('updateAll skip refreshes stale hints in a complete v3 file', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-all-stale-hints-'));
+  const project = path.join(root, 'project');
+  const settingsPath = path.join(project, 'docs/settings.yaml');
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  await fs.mkdir(path.join(project, '.codex/skills'), { recursive: true });
+  await update({ cwd: project, output: silentOutput() });
+  const fresh = await fs.readFile(settingsPath, 'utf8');
+  await fs.writeFile(settingsPath, fresh.replace(
+    '  # after_each_phase | phase_tests_final_checks | tdd_each_phase | end_of_plan | ask_each_time\n',
+    '  # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time\n'
+  ));
+
+  await updateAll({ root, output, settingsMode: 'skip' });
+
+  assert.equal(await fs.readFile(settingsPath, 'utf8'), fresh);
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Файл настроек обновлён до актуального формата, значения сохранены: docs\/settings\.yaml/);
+  assert.doesNotMatch(stdout, /Полный файл настроек сохранён/);
+});
+
 test('update removes retired settings keys from a complete v3 file', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-retired-settings-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
@@ -1230,7 +1253,7 @@ test('init normalizes settings with an unknown version and preserves known value
   assert.match(Buffer.concat(outputChunks).toString('utf8'), /Переношу docs\/settings\.yaml на version: 3/);
 });
 
-test('update preserves a complete version 3 settings file byte for byte', async () => {
+test('update leaves an up to date version 3 settings file untouched', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-update-'));
   const settingsPath = path.join(cwd, 'docs/settings.yaml');
   const output = new PassThrough();
@@ -1239,15 +1262,42 @@ test('update preserves a complete version 3 settings file byte for byte', async 
   await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
   await update({ cwd, output: silentOutput() });
-  const generated = await fs.readFile(settingsPath, 'utf8');
-  const original = `${generated}\ncustom: keep-byte-for-byte\n`;
-  await fs.writeFile(settingsPath, original);
+  const original = await fs.readFile(settingsPath, 'utf8');
 
   await update({ cwd, output });
 
   assert.equal(await fs.readFile(settingsPath, 'utf8'), original);
   const stdout = Buffer.concat(outputChunks).toString('utf8');
   assert.match(stdout, /Настройки docs\/settings\.yaml версии 3 полные — вопросы не требуются\./);
+  assert.doesNotMatch(stdout, /Нет интерактивного терминала/);
+});
+
+test('update refreshes stale hints in a complete version 3 settings file', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-settings-stale-hints-'));
+  const settingsPath = path.join(cwd, 'docs/settings.yaml');
+  const output = new PassThrough();
+  const outputChunks = [];
+  output.on('data', chunk => outputChunks.push(chunk));
+  await fs.mkdir(path.join(cwd, '.codex/skills'), { recursive: true });
+  await update({ cwd, output: silentOutput() });
+  const fresh = await fs.readFile(settingsPath, 'utf8');
+  const stale = fresh
+    .replace(
+      '  # after_each_phase | phase_tests_final_checks | tdd_each_phase | end_of_plan | ask_each_time\n',
+      '  # after_each_phase | tdd_each_phase | end_of_plan | ask_each_time\n'
+    )
+    .replace('  test_strategy: ask_each_time\n', '  test_strategy: end_of_plan\n')
+    + '\ncustom: dropped-on-refresh\n';
+  await fs.writeFile(settingsPath, stale);
+
+  await update({ cwd, output });
+
+  const refreshed = await fs.readFile(settingsPath, 'utf8');
+  assert.match(refreshed, /^  # after_each_phase \| phase_tests_final_checks \| tdd_each_phase \| end_of_plan \| ask_each_time$/m);
+  assert.match(refreshed, /^  test_strategy: end_of_plan$/m);
+  assert.doesNotMatch(refreshed, /^custom:/m);
+  const stdout = Buffer.concat(outputChunks).toString('utf8');
+  assert.match(stdout, /Обновил docs\/settings\.yaml до актуального формата: значения сохранены, вопросы не требуются\./);
   assert.doesNotMatch(stdout, /Нет интерактивного терминала/);
 });
 
