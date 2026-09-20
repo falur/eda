@@ -978,6 +978,9 @@ test('askSettings returns default project settings without an interactive termin
     planExecute: {
       mode: 'auto'
     },
+    polish: {
+      execution: 'subagents'
+    },
     manualTest: {
       depth: 'full'
     },
@@ -1134,6 +1137,7 @@ test('update creates default docs/settings.yaml when it is missing', async () =>
   assert.match(settings, /^plan-review:\n  # Доля закрытых пунктов[\s\S]*?^  threshold: 100$/m);
   assert.match(settings, /^plan-polish:\n  # Максимальное число[\s\S]*?^  limit: 1$/m);
   assert.match(settings, /^plan-execute:\n  # Где eda-plan-execute выполняет фазы плана\.\n[^\n]*\n  mode: auto$/m);
+  assert.match(settings, /^polish:\n  # Где eda-polish выполняет review и исправления цикла полировки\.\n[^\n]*\n  execution: subagents$/m);
   assert.match(settings, /^manual-test:\n  # Глубина ручной проверки в eda-manual-test\.\n[\s\S]*?^  # full \| smoke \| ask_each_time\n  depth: full$/m);
   assert.match(settings, /^plan-review:\n[^\n]*\n[^\n]*\n  threshold: 100\n\nplan-polish:$/m, 'plan-review must not expose agents');
   assert.doesNotMatch(settings, /^review-check:/m);
@@ -2524,6 +2528,9 @@ test('eda-polish documents the full-review-fix loop and limits', async () => {
   assert.match(content, /В `main` основной агент сам выполняет установленные контракты `eda-review` и `eda-fix-by-review`/);
   assert.match(content, /Не запускай для них верхнеуровневых или leaf-субагентов/);
   assert.match(content, /В `subagents` каждый вызов `eda-review` и `eda-fix-by-review` запускай отдельным изолированным субагентом/);
+  assert.match(content, /Явный режим важнее `polish\.execution`/);
+  assert.match(content, /`review\.execution` режимом цикла не управляет/);
+  assert.doesNotMatch(content, /Режим исполнения review: </);
   assert.match(content, /В Claude Code используй `Agent`, в Codex — `spawn_agent` с `fork_turns: "none"`/);
   assert.match(content, /не используй `"all"`/);
   assert.match(content, /reviewed-with-warnings/);
@@ -2571,6 +2578,48 @@ test('plan-execute mode is asked as a scalar setting and falls back to auto for 
   await update({ cwd, output: silentOutput() });
   const migrated = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
   assert.match(migrated, /^plan-execute:\n[\s\S]*?^  mode: main$/m);
+});
+
+test('polish execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = true;
+  output.isTTY = true;
+  const messages = [];
+
+  const settings = await askSettings({
+    input,
+    output,
+    sections: ['polish'],
+    checkboxPrompt: async () => {
+      throw new Error('checkbox must not be called for polish settings');
+    },
+    selectPrompt: async prompt => {
+      messages.push(prompt.message);
+      assert.deepEqual(prompt.choices.map(choice => choice.value), ['subagents', 'main']);
+      assert.equal(prompt.default, 'subagents');
+      return 'main';
+    }
+  });
+
+  assert.deepEqual(messages, ['Как eda-polish должен выполнять review и исправления по умолчанию?']);
+  assert.equal(settings.polish.execution, 'main');
+
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-polish-execution-'));
+  await fs.mkdir(path.join(cwd, '.claude/skills'), { recursive: true });
+  await fs.mkdir(path.join(cwd, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\npolish:\n  execution: parallel\n');
+
+  await update({ cwd, output: silentOutput() });
+
+  const written = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(written, /^polish:\n[\s\S]*?^  execution: subagents$/m);
+
+  await fs.writeFile(path.join(cwd, 'docs/settings.yaml'), 'version: 3\n\npolish:\n  execution: main\nreview:\n  execution: subagents\n');
+  await update({ cwd, output: silentOutput() });
+  const kept = await fs.readFile(path.join(cwd, 'docs/settings.yaml'), 'utf8');
+  assert.match(kept, /^polish:\n[\s\S]*?^  execution: main$/m);
+  assert.match(kept, /^review:\n[\s\S]*?^  execution: subagents$/m);
 });
 
 test('orhestra execution is asked as a scalar setting and falls back to subagents for unknown values', async () => {
