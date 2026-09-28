@@ -1960,8 +1960,10 @@ test('eda-commit delegates the full commit flow to one simple agent', async () =
   assert.match(executorPrompt, /требуют `blocked` с одним вопросом и 2–3 вариантами, до индексации затронутой группы/);
   assert.match(executorPrompt, /Если в кандидате оказался служебный артефакт или секретный файл, не коммить и верни `blocked`/);
   assert.match(executorPrompt, /git add -- <paths>/);
-  assert.match(executorPrompt, /gh pr view/);
+  assert.match(executorPrompt, /gh pr list --head <branch> --state all/);
   assert.match(executorPrompt, /gh pr create/);
+  assert.match(executorPrompt, /Существующим считай только PR со `state: OPEN`/);
+  assert.match(executorPrompt, /Закрытый или смерженный PR этой ветки не переиспользуй/);
   assert.match(executorPrompt, /фактические номер и URL/);
   assert.match(executorPrompt, /После любого выполненного push всегда возвращай ссылку/);
   assert.match(executorPrompt, /`pr\.status: absent` и `pr\.create_url`/);
@@ -1969,9 +1971,9 @@ test('eda-commit delegates the full commit flow to one simple agent', async () =
   assert.match(executorPrompt, /create_url: <url \| null>/);
   assert.match(content, /Если push выполнен, а PR текущей ветки нет \(`pr\.status: absent`\), спроси один раз/);
   assert.match(content, /Если push выполнен, ссылка обязательна всегда/);
+  assert.match(content, /Переиспользовать закрытый или смерженный PR/);
   assert.match(executorPrompt, /Если hook упал/);
   assert.match(executorPrompt, /status: empty \| completed \| committed \| partial \| blocked/);
-  assert.match(executorPrompt, /существующий PR не дублируй/);
   assert.match(executorPrompt, /Если передан предыдущий результат, сначала проверь его `commit_phase`/);
   assert.match(executorPrompt, /Если `commit_phase: completed`, не создавай новые коммиты/);
   assert.match(executorPrompt, /commit_phase: empty \| pending \| completed/);
@@ -2310,6 +2312,8 @@ test('eda-new-project captures collaborative project-start decisions', async () 
   assert.match(content, /Функциональность и границы/);
   assert.doesNotMatch(content, /MVP|МВП/i);
   assert.match(content, /актуальную стабильную версию по официальному источнику/);
+  assert.match(content, /официальный CLI для создания проекта/);
+  assert.match(content, /штатным CLI выбранного стека или package manager/);
   assert.match(content, /status: ready-for-prepare-ai/);
   assert.match(content, /Handoff в eda-prepare-ai/);
   assert.match(content, /не проектируй архитектуру, правила, строгие режимы инструментов, матрицу проверок, AI-скилы, агентные роли или MCP/i);
@@ -2328,6 +2332,23 @@ test('eda-new-project captures collaborative project-start decisions', async () 
   assert.doesNotMatch(content, /^### \d+\. (?:Подобрать инструменты качества|Выбрать архитектуру|Решить правила проекта|Подобрать AI-скилы)/m);
   assert.doesNotMatch(content, /все 17 групп экстремальной матрицы/);
   assert.doesNotMatch(content, /property-based|SAST|SBOM|pre-commit|post-deploy/);
+});
+
+test('new project implementation uses the official scaffold CLI', async () => {
+  const prepare = await fs.readFile(skillPath('eda-prepare-ai'), 'utf8');
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  const execute = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
+  const justDoIt = await fs.readFile(skillPath('eda-just-do-it'), 'utf8');
+
+  assert.match(prepare, /Новый проект разворачивается штатным CLI/);
+  assert.match(prepare, /`composer create-project`, `npm create`, `npx`, `cargo new`/);
+  assert.match(prepare, /Зафиксируй эту команду в `docs\/rules\.md`/);
+  assert.match(plan, /план обязан использовать точную команду этого CLI или package manager/);
+  assert.match(plan, /Не планируй ручное создание файлов/);
+  assert.match(execute, /Новый проект разворачивай штатным CLI/);
+  assert.match(execute, /Не создавай вручную файлы, которые генерирует CLI/);
+  assert.match(justDoIt, /Новый проект разворачивай штатным CLI/);
+  assert.match(justDoIt, /а не создавай генерируемую основу вручную/);
 });
 
 test('eda-explore asks about meaningful forks and requires concrete output', async () => {
@@ -2378,6 +2399,9 @@ test('eda-send-review sends a comment by default and can close previous generate
   assert.match(content, /minimizeComment/);
   assert.match(content, /resolveReviewThread/);
   assert.match(content, /текущим GitHub-пользователем/);
+  assert.match(content, /gh pr list --head <branch> --state all/);
+  assert.match(content, /Целью может быть только PR со `state: OPEN`/);
+  assert.match(content, /Закрытый или смерженный PR не переиспользуй/);
 });
 
 test('worktree skills document naming and merge contract', async () => {
