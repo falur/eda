@@ -2138,8 +2138,12 @@ test('eda-review supports main and subagents execution without legacy cross cli'
   assert.match(content, /Несовпадение модели считай ошибкой контракта/);
   assert.match(content, /score.*Не используй фиксированные вычеты/s);
   assert.match(content, /UI\/UX проверены по коду; браузерная проверка не выполнялась/);
-  assert.match(content, /Для GitHub\/GitLab URL получи metadata и diff read-only командами `gh`\/`glab`/);
-  assert.match(content, /warning разрешён только для недоступных прошлых обсуждений/);
+  assert.match(content, /Для GitHub\/GitLab URL получи metadata, diff, SHA текущего head и статусы CI read-only командами `gh`\/`glab`/);
+  assert.match(content, /Завершённую в CI проверку со статусом success или failure не запускай локально повторно/);
+  assert.match(content, /Он не заменяет выбранные смысловые проходы/);
+  assert.match(content, /CI_CONTEXT: <head SHA, CI-проверки со статусами, командами, ссылками и значимыми failure-логами \| none>/);
+  assert.match(content, /не передавай полные логи всех jobs/);
+  assert.match(content, /warning разрешён для недоступных CI-результатов и прошлых обсуждений/);
   assert.doesNotMatch(content, /mode: <draft \| normal \| strict>/);
   assert.doesNotMatch(content, /codex exec\s+"/i);
   assert.doesNotMatch(content, /claude -p/i);
@@ -2184,6 +2188,19 @@ test('eda-review roles live in packaged agents with structured contracts', async
   }
 
   await assert.rejects(fs.stat(skillPath('eda-review-check')), err => err?.code === 'ENOENT');
+});
+
+test('eda-review-tests reuses completed PR CI without skipping test review', async () => {
+  const prompt = await fs.readFile(path.join(AGENTS_SRC, 'eda-review-tests/prompt.md'), 'utf8');
+  const matrix = await fs.readFile(
+    path.join(SKILLS_SRC, 'eda-review/references/review-matrix.md'),
+    'utf8'
+  );
+
+  assert.match(prompt, /`CI_CONTEXT`/);
+  assert.match(prompt, /не повторяй тест, линтер, typecheck, сборку или другую автоматическую команду, уже завершённую в CI на текущем head/);
+  assert.match(prompt, /Это не отменяет анализ полноты и корректности самих тестов/);
+  assert.match(matrix, /не дублирующие завершённые CI-проверки текущего head/);
 });
 
 test('eda-review main matrix mirrors every specialized role', async () => {
