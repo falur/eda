@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-skill-runner",
+  "description": "Выполняет один установленный eda-скил в изолированной сессии с сохранением его режима и границ ответственности.",
+  "models": {
+    "claude": "opus",
+    "codex": "gpt-5.6-sol"
+  },
+  "reasoning": {
+    "claude": "high",
+    "codex": "high"
+  },
+  "access": "workspace-write"
+}

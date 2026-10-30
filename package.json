@@ -1,7 +1,7 @@
 {
   "name": "@gian-tiaga/eda",
-  "version": "3.13.1",
-  "description": "Пакет скилов и специализированных агентов eda-* для Claude Code и Codex CLI",
+  "version": "3.14.0",
+  "description": "Пакет скилов и специализированных агентов eda-* для Claude Code, Codex CLI и OpenCode",
   "type": "module",
   "bin": {
     "eda": "bin/cli.js"
@@ -25,6 +25,7 @@
     "claude-code",
     "codex",
     "codex-cli",
+    "opencode",
     "skills",
     "agents"
   ],

@@ -6,12 +6,13 @@
 
 `eda` — npm-пакет `@gian-tiaga/eda` с CLI для установки и обновления русскоязычных AI-скилов и специализированных агентов `eda-*` в проектах пользователя.
 
-Пакет поддерживает две среды:
+Пакет поддерживает три среды:
 
 - Claude Code: установка в `.claude/skills/<skill>/SKILL.md`
 - Codex CLI: установка в `.agents/skills/<skill>/SKILL.md`
+- OpenCode V2: установка в `.opencode/skills/<skill>/SKILL.md`
 
-Агенты устанавливаются в `.claude/agents/<agent>.md` и `.codex/agents/<agent>.toml`. Главная идея проекта: хранить канонические скилы в `skills/<skill>/`, канонические определения агентов в `agents/<agent>/`, а CLI рендерит и синхронизирует платформенные форматы. Корневой `AGENTS.md` в проектах пользователей установщик не трогает.
+Агенты устанавливаются в `.claude/agents/<agent>.md`, `.codex/agents/<agent>.toml` и `.opencode/agents/<agent>.md`. Главная идея проекта: хранить канонические скилы в `skills/<skill>/`, канонические определения агентов в `agents/<agent>/`, а CLI рендерит и синхронизирует платформенные форматы. Корневой `AGENTS.md` в проектах пользователей установщик не трогает.
 
 ## Стек
 
@@ -36,7 +37,7 @@ eda/
 ├── lib/
 │   ├── install.js         # init/update/update-all, settings, синхронизация и manifests
 │   ├── catalog.js         # Чтение и валидация канонических skills/agents
-│   └── renderers/         # Claude/Codex renderers для skills и agents
+│   └── renderers/         # Claude/Codex/OpenCode renderers для skills и agents
 ├── skills/
 │   └── eda-*/
 │       ├── SKILL.md       # Каноническая инструкция скила
@@ -46,7 +47,8 @@ eda/
 │       ├── agent.json     # Имя, модели, reasoning, доступ и лимиты
 │       └── prompt.md      # Единый системный prompt агента
 └── test/
-    └── install.test.js    # CLI/install behavior and skill content checks
+    ├── install.test.js    # CLI/install behavior and skill content checks
+    └── opencode.test.js   # OpenCode V2 renderers и установка
 ```
 
 ## Команды
@@ -82,8 +84,8 @@ node bin/cli.js update-all [dir]
 - Работай на русском языке: проект, README и скилы написаны для русскоязычного пользователя.
 - Перед изменением поведения CLI читай `lib/install.js`, `bin/cli.js`, `README.md` и релевантные тесты.
 - Перед изменением скила читай соседние `skills/eda-*/SKILL.md`: у них должен оставаться единый стиль, структура и терминология.
-- Перед изменением агента читай его `agent.json`, `prompt.md`, вызывающие скилы и оба platform renderer.
-- Не редактируй установленные копии в `.agents/`, `.claude/` или `.codex/` как источник правды. Источник правды — только `skills/` и `agents/` пакета.
+- Перед изменением агента читай его `agent.json`, `prompt.md`, вызывающие скилы и все platform renderer.
+- Не редактируй установленные копии в `.agents/`, `.claude/`, `.codex/` или `.opencode/` как источник правды. Источник правды — только `skills/` и `agents/` пакета.
 - Не добавляй новые runtime-зависимости без необходимости. Для простого поведения предпочитай стандартные модули Node.js.
 - Не используй команды с интерактивным вводом в автоматических тестах.
 - Не обходи pre-commit/pre-push hooks через `--no-verify`.
@@ -91,18 +93,19 @@ node bin/cli.js update-all [dir]
 
 ## Правила изменения CLI
 
-- `eda init` должен спрашивать целевые среды при интерактивном TTY и выбирать обе среды без TTY.
-- `eda update` должен обновлять только уже найденные среды. Среда считается найденной по каталогу `skills`, каталогу `agents` или target manifest; если ни одной среды нет, команда просит сначала запустить `eda init`. Полный валидный `docs/settings.yaml` версии 3 сохраняется без вопросов и перезаписи, пока его текст совпадает с актуальным шаблоном; при изменившемся шаблоне файл молча перерисовывается, значения пользователя переносятся, посторонние ключи и ручные комментарии не сохраняются. Старый, неизвестный или неполный файл переносится целиком: известные валидные значения сохраняются, в TTY спрашиваются только отсутствующие, без TTY используются defaults.
+- `eda init` должен спрашивать целевые среды при интерактивном TTY и выбирать все три среды без TTY.
+- OpenCode V2 использует `.opencode/skills/`, `.opencode/agents/*.md` и `.opencode/eda-manifest.json`; `update-all` не заходит в `.opencode`. Конфиги OpenCode установщик не редактирует. OpenCode renderer добавляет к скилам платформенный адаптер, роли рендерит с `mode: subagent` и V2 `permissions`. Read-only роли не имеют shell/MCP/редакторов/субагентов, diff и CI им передаёт оркестратор; git-write запрещает редакторы, workspace-write наследует permissions пользователя. Модель по умолчанию наследуется от сессии; необязательное `models.opencode` задаёт `provider/model#variant`. Claude/Codex настройки моделей не переносятся автоматически. Для изолированных шагов используется `eda-skill-runner` с возможностью вложенных запусков, не встроенный general. Недоступные обязательные возможности дают `blocked` без смены режима.
+- `eda update` в TTY при каждом запуске показывает checkbox всех платформ: найденные уже отмечены и обязательны, остальные можно добавить. После подтверждения синхронизирует найденные и добавленные платформы; выбор сохраняется их каталогами и target manifests, отдельного списка в settings нет. Без TTY обновляет только найденные среды. Среда считается найденной по каталогу `skills`, каталогу `agents` или target manifest; если ни одной среды нет, команда просит сначала запустить `eda init`. `update-all` не добавляет платформы. Полный валидный `docs/settings.yaml` версии 3 сохраняется без вопросов и перезаписи, пока его текст совпадает с актуальным шаблоном; при изменившемся шаблоне файл молча перерисовывается, значения пользователя переносятся, посторонние ключи и ручные комментарии не сохраняются. Старый, неизвестный или неполный файл переносится целиком: известные валидные значения сохраняются, в TTY спрашиваются только отсутствующие, без TTY используются defaults.
 - `eda update` и `eda update-all` перед настройками переносят каталоги `aims`, `automations`, `executions`, `fixes`, `manual-tests`, `plan-review-fixes`, `plan-reviews`, `plans`, `project-starts`, `researches`, `review-fixes`, `reviews`, `roadmaps` из `docs/` в `docs/artifacts/`. Содержимое файлов не переписывается, новые пути имеют приоритет при конфликте, старые пути после миграции не поддерживаются. `eda init` этот перенос не выполняет.
 - `eda update-all [dir]` должен обходить указанную директорию, её прямых детей и внуков. Проект считается найденным при наличии установленного `eda`-скила, агента или target manifest.
-- `eda update-all` должен обновлять только найденные среды и перед настройками предложить `configure` или `skip`. `configure` один раз спрашивает полный профиль и атомарно записывает одинаковый `docs/settings.yaml` во все проекты. `skip` не задаёт вопросы, сохраняет полный v3 с актуальным текстом как есть и перерисовывает его при изменившемся шаблоне, индивидуально переносит старые, неизвестные и неполные файлы с defaults для отсутствующих значений и создаёт полный профиль defaults только при отсутствии файла. Без TTY используется `skip`. Команда не должна заходить в `.git`, `.agents`, `.claude`, `.codex`, `node_modules` и следовать symlink-директориям.
+- `eda update-all` должен обновлять только найденные среды и перед настройками предложить `configure` или `skip`. `configure` один раз спрашивает полный профиль и атомарно записывает одинаковый `docs/settings.yaml` во все проекты. `skip` не задаёт вопросы, сохраняет полный v3 с актуальным текстом как есть и перерисовывает его при изменившемся шаблоне, индивидуально переносит старые, неизвестные и неполные файлы с defaults для отсутствующих значений и создаёт полный профиль defaults только при отсутствии файла. Без TTY используется `skip`. Команда не должна заходить в `.git`, `.agents`, `.claude`, `.codex`, `.opencode`, `node_modules` и следовать symlink-директориям.
 - Ошибка обновления одного проекта в `eda update-all` не должна останавливать остальные проекты; в конце нужна сводка по успехам, пропускам и ошибкам.
 - При `eda init` полный v3 с актуальным текстом сохраняется, а устаревший по шаблону, старый, неизвестный или неполный файл умно переносится и целиком атомарно переписывается. `eda update-all configure` атомарно записывает общий профиль; `skip` сохраняет актуальный полный v3, индивидуально переносит остальные версии и создаёт defaults при отсутствии файла.
 - Актуальный формат `docs/settings.yaml` — только `version: 3`: разделы `orhestra`, `aim`, `explore`, `plan`, `plan-review`, `plan-polish`, `plan-execute`, `polish`, `manual-test`, `review`, `send-review`, `discover-automations`. `orhestra.execution` принимает `subagents`, `main` или `main_propagated` с default `subagents`; `plan.review` включает изолированный цикл `eda-plan-polish`; `plan.test_strategy` управляет тестами и автоматическими проверками и принимает `after_each_phase`, `phase_tests_final_checks`, `tdd_each_phase`, `end_of_plan` или `ask_each_time`; новые допустимые значения и подсказки доезжают в уже созданные конфиги через перерисовку при `eda update`; `plan-review.threshold` задаёт gate; `plan-polish.limit` ограничивает итерации «проверка + исправление»; `plan-execute.mode` принимает `subagents`, `main` или `auto` с default `auto`; `polish.execution` принимает `subagents` или `main` с default `subagents` и задаёт режим цикла `eda-polish` независимо от `review.execution`; `manual-test.depth` принимает `full`, `smoke` или `ask_each_time` с default `full`; `review.execution` принимает `subagents` или `main` с default `subagents`, а `review.agents` задаёт состав и модели специализированных проверок. Старые `plan.meta_review` и `plan-polish.strict` переносятся соответственно в `plan.review` и удалённое поле без runtime-fallback.
 - Для Codex формат установки — директория с `SKILL.md`: `.agents/skills/<skill>/SKILL.md`.
 - `models.codex` в `skill.json` разрешено хранить как зарезервированную настройку будущего per-skill override; пока Codex её не поддерживает, renderer не добавляет модель в `SKILL.md`.
-- Для агентов форматы установки — `.claude/agents/<agent>.md` и `.codex/agents/<agent>.toml`.
-- `.claude/eda-manifest.json` и `.codex/eda-manifest.json` хранят только компоненты, которыми владеет `eda`; удалять чужие skills/agents нельзя.
+- Для агентов форматы установки — `.claude/agents/<agent>.md`, `.codex/agents/<agent>.toml` и `.opencode/agents/<agent>.md`.
+- `.claude/eda-manifest.json`, `.codex/eda-manifest.json` и `.opencode/eda-manifest.json` хранят только компоненты, которыми владеет `eda`; удалять чужие skills/agents нельзя.
 - Старые Codex-копии `.codex/skills/<skill>/` и `.codex/skills/<skill>.md` удаляются при обновлении соответствующего скила; чужие компоненты в `.codex/skills/` сохраняются.
 - Retired-скилы и агенты удаляются из всех установленных целевых сред.
 - `AGENTS.md` в проектах пользователей установщик не создаёт и не перезаписывает.

@@ -12,6 +12,7 @@ import {
   askReviewAgentSettings,
   askSettings,
   askTargets,
+  askUpdateTargets,
   askUpdateAllSettingsMode,
   init,
   update,
@@ -101,7 +102,7 @@ test('update migrates Codex skills to .agents/skills directories with SKILL.md',
   );
 });
 
-test('init renders custom agents and ownership manifests for both targets', async () => {
+test('init renders custom agents and ownership manifests for all targets', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-agents-'));
 
   await init({ cwd, output: silentOutput() });
@@ -133,7 +134,7 @@ test('init renders custom agents and ownership manifests for both targets', asyn
 
   const packageJson = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
 
-  for (const target of ['claude', 'codex']) {
+  for (const target of ['claude', 'codex', 'opencode']) {
     const manifest = JSON.parse(await fs.readFile(path.join(cwd, `.${target}/eda-manifest.json`), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
     assert.equal(manifest.packageVersion, packageJson.version);
@@ -885,13 +886,79 @@ test('update renames eda-docs and eda-start skills', async () => {
   }
 });
 
-test('askTargets defaults to both targets without an interactive terminal', async () => {
+test('askTargets defaults to all targets without an interactive terminal', async () => {
   const input = new PassThrough();
   const output = new PassThrough();
 
   const targets = await askTargets({ input, output });
 
-  assert.deepEqual(targets, ['claude', 'codex']);
+  assert.deepEqual(targets, ['claude', 'codex', 'opencode']);
+});
+
+test('askUpdateTargets preselects installed platforms and offers additions on every interactive call', async () => {
+  const input = new PassThrough();
+  const output = silentOutput();
+  input.isTTY = true;
+  output.isTTY = true;
+  for (const installedTargets of [['codex'], ['claude', 'codex', 'opencode']]) {
+    let calls = 0;
+    const targets = await askUpdateTargets({
+      installedTargets, input, output,
+      checkboxPrompt: async (config, context) => {
+        calls++;
+        assert.equal(context.input, input);
+        assert.equal(context.output, output);
+        assert.deepEqual(config.choices.filter(choice => choice.checked).map(choice => choice.value), installedTargets);
+        assert.deepEqual(config.choices.map(choice => choice.value), ['claude', 'codex', 'opencode']);
+        assert.equal(config.validate(config.choices), true);
+        assert.equal(typeof config.validate([]), 'string');
+        return [...installedTargets, 'opencode'];
+      }
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(targets, installedTargets.includes('claude') ? installedTargets : ['codex', 'opencode']);
+  }
+});
+
+test('askUpdateTargets never adds platforms without both input and output TTY', async () => {
+  for (const [inputTTY, outputTTY] of [[false, false], [true, false], [false, true]]) {
+    const input = new PassThrough();
+    const output = silentOutput();
+    input.isTTY = inputTTY;
+    output.isTTY = outputTTY;
+    const targets = await askUpdateTargets({
+      installedTargets: ['claude'], input, output,
+      checkboxPrompt: async () => assert.fail('Unexpected interactive prompt')
+    });
+    assert.deepEqual(targets, ['claude']);
+  }
+});
+
+test('interactive update persists added platforms and preselects them on subsequent updates', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'eda-update-add-target-'));
+  await fs.mkdir(path.join(cwd, '.codex/agents'), { recursive: true });
+  await update({ cwd, input: new PassThrough(), output: silentOutput() });
+  const input = new PassThrough();
+  const output = silentOutput();
+  input.isTTY = true;
+  output.isTTY = true;
+  for (const expected of [['codex'], ['codex', 'opencode']]) {
+    let calls = 0;
+    await update({
+      cwd, input, output,
+      checkboxPrompt: async config => {
+        calls++;
+        assert.deepEqual(config.choices.filter(choice => choice.checked).map(choice => choice.value), expected);
+        return ['codex', 'opencode'];
+      }
+    });
+    assert.equal(calls, 1);
+    const manifest = JSON.parse(await fs.readFile(path.join(cwd, '.opencode/eda-manifest.json'), 'utf8'));
+    assert.deepEqual(manifest.skills, await listSkillNames());
+    assert.deepEqual(manifest.agents, await listAgentNames());
+    assert.match(await fs.readFile(path.join(cwd, '.opencode/skills/eda-plan/SKILL.md'), 'utf8'), /name: eda-plan/);
+    await assert.rejects(fs.stat(path.join(cwd, '.claude')), { code: 'ENOENT' });
+  }
 });
 
 test('askUpdateAllSettingsMode offers configure and skip', async () => {
