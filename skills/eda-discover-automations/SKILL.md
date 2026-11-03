@@ -36,10 +36,8 @@ description: 'Аудирует автоматические проверки п�
 
 ## Интерактивные вопросы
 
-Когда инструкция говорит `AskUserQuestion`, это означает блокирующий интерактивный вопрос.
-- Claude Code: используй `AskUserQuestion`.
-- Codex interactive: если доступен `request_user_input`, используй его. Если tool недоступен, задай один короткий вопрос в чат, дай варианты 1–3, напиши «Ответь номером или своим вариантом. Я продолжу только после ответа.» и остановись.
-- Codex exec / неинтерактивный запуск: не задавай вопросы и не пытайся читать stdin. Если без ответа нельзя безопасно продолжать, заверши работу со статусом `blocked: нужен ответ пользователя`, перечисли вопросы и варианты, не выполняй рискованные действия.
+Когда инструкция говорит `AskUserQuestion`, это означает блокирующий интерактивный вопрос: задай его и остановись до ответа.
+- Неинтерактивный запуск: не задавай вопросы и не пытайся читать stdin. Если без ответа нельзя безопасно продолжать, заверши работу со статусом `blocked: нужен ответ пользователя`, перечисли вопросы и варианты, не выполняй рискованные действия.
 - Не запускай команды, которые ждут интерактивного ввода в терминале; перед такими командами спроси в хост-интерфейсе или остановись с `blocked`.
 
 ## Этапы
@@ -69,18 +67,19 @@ description: 'Аудирует автоматические проверки п�
 4. **Стиль и качество:** formatter, linter, naming, complexity, duplication, dead code, unused exports/dependencies, forbidden patterns, TODO/FIXME policy и лимиты размера.
 5. **Статический анализ:** typecheck, nullability, data-flow/taint, API misuse, unreachable code, unsafe/undefined behavior, memory/thread/address sanitizers и анализаторы выбранного языка.
 6. **Границы кода:** forbidden imports, dependency direction, cycles, layers, public API, ownership, package/module boundaries, generated-code boundaries и architecture fitness functions.
-7. **Конфиги и инфраструктура:** schema/parse для env, YAML/JSON/TOML, CI, Docker/Compose, Kubernetes/Helm, Terraform/IaC, proxy, feature flags, IAM, observability и env-example drift.
+7. **Конфиги и инфраструктура:** schema/parse для env, YAML/JSON/TOML, CI, Docker/Compose и Dockerfile lint, Kubernetes/Helm, Terraform/IaC, proxy и его анализатор конфигурации, редиректы на HTTPS и канонический хост, HSTS, feature flags, IAM, observability и env-example drift.
 8. **API и совместимость:** OpenAPI/GraphQL/Proto, breaking changes, generated-code drift, serialization, backward/forward compatibility, idempotency, pagination/filter/sort.
 9. **БД и данные:** migration lint/forward/rollback/dry-run, schema drift, constraints, fixtures, transactions, concurrency, query plans/N+1, backup/restore, retention/anonymization и data invariants.
 10. **Безопасность и supply chain:** secrets, SAST, DAST, dependency/container/IaC scan, licenses, SBOM, lockfile integrity, provenance/signatures, authn/authz negative tests, injection, XSS/CSRF/SSRF, CORS/CSP/headers, rate limits и PII leakage.
-11. **Производительность и надёжность:** benchmarks/budgets, bundle size, load/stress/spike/soak, leaks, startup, timeouts/retries/circuit breakers, graceful shutdown, fault injection/chaos и recovery.
+11. **Производительность и надёжность:** benchmarks/budgets, тесты на число запросов к БД и внешних вызовов на операцию, bundle size и бюджет веса CSS/JS, проверка сжатия и кеш-заголовков production после деплоя, load/stress/spike/soak, leaks, startup, timeouts/retries/circuit breakers, graceful shutdown, fault injection/chaos и recovery.
 12. **Сборка и релиз:** clean-clone/reproducible build, generated artifacts, package contents, runtime/OS/architecture matrix, install/upgrade/downgrade, semver/changelog, release dry-run, canary/rollback и post-deploy smoke.
 13. **Документация:** Markdown/style/spell, links, executable snippets, CLI help/API docs drift, diagrams/schemas и migration/release notes.
 14. **Эксплуатация:** health/readiness/liveness, metrics/log/trace schemas, no secrets/PII in logs, alert rules, dashboards as code, SLO/error budgets, disaster recovery и restore drills.
 15. **Доменные проверки:** платежи, почта, очереди, jobs, webhooks, поиск, файлы/media, mobile signing, offline/sync, localization, analytics events и другие инварианты продукта.
 16. **AI-функции:** prompt/output schemas, evals, prompt injection/jailbreak, data leakage, tool permissions, nondeterminism, latency и token/cost budgets.
 17. **MCP:** browser/Playwright MCP для сценариев и визуальных доказательств; MCP для БД, API, документации, GitHub/GitLab, cloud, observability и выбранного языка/фреймворка. Укажи точный сценарий, минимальные права и почему CLI/CI недостаточно.
-18. **Агентный процесс и планы:** чтение обязательных источников, формат артефактов, проверка критериев готовности, файлов/модулей и зависимостей задач, rollback/backup для рискованных действий, запрет пропуска команд и повторяющиеся ошибки агентов.
+18. **SEO и индексация:** для публичных страниц — коды ответов и редиректы, canonical, robots и `noindex` в production, sitemap, title/description, hreflang, структурированные данные и SEO-аудит страниц в CI.
+19. **Агентный процесс и планы:** чтение обязательных источников, формат артефактов, проверка критериев готовности, файлов/модулей и зависимостей задач, rollback/backup для рискованных действий, запрет пропуска команд и повторяющиеся ошибки агентов.
 
 Для каждого паттерна собери: доказательство из истории либо baseline-пробел в текущем проекте, затронутые файлы, возможный ущерб, вероятность, надёжность проверки и стоимость внедрения. Повторяющиеся паттерны обычно приоритетнее, но не отбрасывай сильного кандидата из-за одного случая или потому, что ошибка ещё не произошла.
 

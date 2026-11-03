@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-review-triage",
+  "description": "Выбирает проверки и применимые карточки для eda-review по содержимому ревью.",
+  "models": {
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
+  },
+  "reasoning": {
+    "claude": "low",
+    "codex": "low"
+  },
+  "access": "read-only"
+}

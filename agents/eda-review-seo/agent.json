@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "eda-review-seo",
+  "description": "Проверяет индексацию, адреса и метаданные публичных страниц для eda-review.",
+  "models": {
+    "claude": "sonnet",
+    "codex": "gpt-5.6-terra"
+  },
+  "reasoning": {
+    "claude": "medium",
+    "codex": "medium"
+  },
+  "access": "read-only"
+}

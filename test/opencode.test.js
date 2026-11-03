@@ -95,7 +95,7 @@ test('OpenCode-only update is idempotent, preserves foreign files and removes st
   await update({ cwd, output: output() });
   const installed = path.join(cwd, '.opencode/skills/eda-review/SKILL.md');
   assert.match(await fs.readFile(installed, 'utf8'), /Среда исполнения: OpenCode V2/);
-  assert.ok(await fs.stat(path.join(cwd, '.opencode/skills/eda-review/references/review-matrix.md')));
+  assert.ok(await fs.stat(path.join(cwd, '.opencode/skills/eda-review/references/checks/security.md')));
   assert.equal(await fs.readFile(path.join(cwd, '.opencode/agents/team.md'), 'utf8'), 'keep');
   assert.equal(await fs.readFile(path.join(cwd, '.opencode/opencode.jsonc'), 'utf8'), '{ /* keep */ }');
   for (const name of ['.claude', '.codex', '.agents', '.opencode/skills/eda-old', '.opencode/agents/eda-old.md']) {
