@@ -61,6 +61,8 @@ plan-execute:
 
 <!-- include: skills/_shared/done.md -->
 
+<!-- include: skills/_shared/text-questions.md -->
+
 ## Этапы
 
 ### 1. Выбрать план

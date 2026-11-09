@@ -57,6 +57,8 @@ description: 'Создаёт понятный исполнимый план ре
 
 <!-- include: skills/_shared/questions.md -->
 
+<!-- include: skills/_shared/text-questions.md -->
+
 ## Этапы
 
 ### 1. Собрать контекст

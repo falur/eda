@@ -43,6 +43,8 @@ description: 'Создаёт и обновляет согласованное о
 
 <!-- include: skills/_shared/questions.md -->
 
+<!-- include: skills/_shared/text-questions.md -->
+
 ## Процесс
 
 ### 1. Прочитать существующий контекст

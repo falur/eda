@@ -38,6 +38,8 @@ description: 'Исследует техническую тему или зада
 
 <!-- include: skills/_shared/questions.md -->
 
+<!-- include: skills/_shared/text-questions.md -->
+
 ## Главные правила
 
 1. **Никаких правок кода.** Запись только в `docs/artifacts/researches/`.

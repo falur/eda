@@ -46,6 +46,8 @@ description: 'Готовит проект к работе с AI: проекти�
 
 <!-- include: skills/_shared/questions.md -->
 
+<!-- include: skills/_shared/text-questions.md -->
+
 ## Этапы
 
 ### 1. Проанализировать проект

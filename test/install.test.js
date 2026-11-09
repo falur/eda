@@ -462,7 +462,7 @@ test('updateAll writes one shared settings file to every updated project', async
   const depthTwoProject = path.join(root, 'group', 'app');
   const depthThreeProject = path.join(root, 'group', 'nested', 'too-deep');
   const planSource = renderCodexSkill(await skillSource('eda-plan'));
-  const reviewSource = await fs.readFile(skillPath('eda-review'), 'utf8');
+  const reviewSource = await skillSource('eda-review');
 
   await fs.mkdir(path.join(depthZeroProject, '.codex/skills'), { recursive: true });
   await fs.writeFile(path.join(depthZeroProject, '.codex/skills/eda-plan.md'), 'old layout');
@@ -2085,6 +2085,38 @@ test('interview skills ask in rounds of independent decisions with a recommendat
     expandIncludes('Скил eda-test', '<!-- include: ../outside.md -->', ROOT),
     /include вне пакета/
   );
+});
+
+test('skills without a question tool ask numbered text questions, up to 8 per message', async () => {
+  const rule = await fs.readFile(path.join(SKILLS_SRC, '_shared/text-questions.md'), 'utf8');
+  assert.match(rule, /^## Вопросы текстом$/m);
+  assert.match(rule, /Им же перечисляй вопросы в `blocked: нужен ответ пользователя`/);
+  assert.match(rule, /\*\*До 8 вопросов в сообщении\.\*\* Все вопросы раунда — одним сообщением, но не больше 8; остальные — следующим сообщением после ответа/);
+  assert.match(rule, /Вопросы — с 1 в каждом сообщении, варианты — с 1 внутри вопроса\. Рекомендованный вариант — первый/);
+  assert.match(rule, /^ {3}1\. <суть вопроса>/m);
+  assert.match(rule, /^ {6}1\) <вариант> \(рекомендую\)/m);
+  assert.match(rule, /Ответ: номер вопроса - номер варианта, например `1-1 2-2`/);
+  assert.match(rule, /«ок» или «согласен» — принять все рекомендации\./);
+  assert.match(rule, /«ок» или «согласен» без номеров — рекомендованный вариант в каждом вопросе сообщения/);
+  assert.match(rule, /Вопрос без ответа или с непонятным ответом не додумывай/);
+
+  const askingSkills = [];
+  for (const skillName of await listSkillNames()) {
+    const raw = await fs.readFile(skillPath(skillName), 'utf8');
+    if (!/AskUserQuestion|^## Вопросы/m.test(raw)) continue;
+    askingSkills.push(skillName);
+    assert.match(raw, /^<!-- include: skills\/_shared\/text-questions\.md -->$/m, `${skillName} must include the text question rule`);
+    const source = await skillSource(skillName);
+    assert.ok(source.includes(rule.trim()), `${skillName} must embed the text question rule`);
+    assert.equal(source.match(/^## Вопросы текстом$/gm).length, 1, `${skillName} must embed the rule once`);
+  }
+  assert.ok(askingSkills.includes('eda-plan') && askingSkills.includes('eda-explore') && askingSkills.includes('eda-polish'));
+
+  const questions = await fs.readFile(path.join(SKILLS_SRC, '_shared/questions.md'), 'utf8');
+  assert.match(questions, /Без инструмента вопросов раунд задаётся по разделу «Вопросы текстом»/);
+  const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
+  assert.match(renderCodexSkill(plan), /иначе вопросы в чат по разделу «Вопросы текстом» и остановка до ответа/);
+  assert.match(renderOpenCodeSkill(plan), /если интерактивный инструмент недоступен, задай вопросы в чат по разделу «Вопросы текстом» и остановись/);
 });
 
 test('executors claim done only with evidence from the current run', async () => {

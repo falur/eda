@@ -48,6 +48,8 @@ description: 'Мержит ветку из соседнего git worktree в т
 
 После ответа продолжи того же агента, если хост это поддерживает. Иначе запусти `eda-merge-worktree-executor` заново с исходным запросом, полным предыдущим результатом и ответом пользователя.
 
+<!-- include: skills/_shared/text-questions.md -->
+
 ## Процесс
 
 Запусти `eda-merge-worktree-executor` и передай:
