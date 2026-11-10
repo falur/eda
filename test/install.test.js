@@ -143,6 +143,9 @@ test('init renders custom agents and ownership manifests for all targets', async
   assert.match(codexAimExecutor, /^sandbox_mode = "workspace-write"$/m);
   assert.match(codexExecutor, /## Чтение файлов\n\nЧитай файлы полностью\. Вывод с пометкой `tokens truncated`/);
   assert.match(codexAimExecutor, /Документы рамки \(`AGENTS\.md`, `docs\/rules\*`, `docs\/arch\*`/);
+  assert.match(codexExecutor, /## Вопросы пользователю\n\nИнтерактивного инструмента вопросов в Codex нет: не вызывай `request_user_input`, даже если он доступен/);
+  assert.match(codexExecutor, /Вопрос возвращай вызывающему в результате по контракту агента\./);
+  assert.doesNotMatch(claudeExecutor, /request_user_input/);
   assert.match(codexExecutor, /\n"""\n$/);
   assert.match(
     await fs.readFile(path.join(cwd, '.agents/skills/eda-plan/SKILL.md'), 'utf8'),
@@ -2056,7 +2059,10 @@ test('skills ask questions through AskUserQuestion and leave platform tools to a
 
   const codex = renderCodexSkill(plan);
   const opencode = renderOpenCodeSkill(plan);
-  assert.match(codex, /`AskUserQuestion` в инструкции — блокирующий вопрос: `request_user_input`, если инструмент доступен/);
+  assert.match(codex, /Интерактивного инструмента вопросов в Codex нет: не вызывай `request_user_input`, даже если он доступен, — Codex сворачивает его окно/);
+  assert.match(codex, /`AskUserQuestion` в инструкции — вопросы в чат по разделу «Вопросы текстом»: задав их, заверши ход этим сообщением и до ответа пользователя ничего не делай/);
+  assert.match(codex, /В `codex exec` не читай stdin, верни `blocked: нужен ответ пользователя` с вопросами в том же формате/);
+  assert.doesNotMatch(codex, /`request_user_input`, если инструмент доступен/);
   assert.match(opencode, /Вместо `AskUserQuestion` используй `question`/);
 });
 
@@ -2115,8 +2121,35 @@ test('skills without a question tool ask numbered text questions, up to 8 per me
   const questions = await fs.readFile(path.join(SKILLS_SRC, '_shared/questions.md'), 'utf8');
   assert.match(questions, /Без инструмента вопросов раунд задаётся по разделу «Вопросы текстом»/);
   const plan = await fs.readFile(skillPath('eda-plan'), 'utf8');
-  assert.match(renderCodexSkill(plan), /иначе вопросы в чат по разделу «Вопросы текстом» и остановка до ответа/);
+  assert.match(renderCodexSkill(plan), /`AskUserQuestion` в инструкции — вопросы в чат по разделу «Вопросы текстом»/);
   assert.match(renderOpenCodeSkill(plan), /если интерактивный инструмент недоступен, задай вопросы в чат по разделу «Вопросы текстом» и остановись/);
+});
+
+test('skills accept input artifacts only from the current project', async () => {
+  const rule = await fs.readFile(path.join(SKILLS_SRC, '_shared/project-artifacts.md'), 'utf8');
+  assert.match(rule, /^## Артефакты только из текущего проекта$/m);
+  assert.match(rule, /Путь из другого проекта — ошибка пользователя: такой файл не читай и по нему не работай/);
+  assert.match(rule, /\*\*Корень проекта\*\* — `git rev-parse --show-toplevel` из рабочей директории, вне git — сама рабочая директория/);
+  assert.match(rule, /Своими считаются и другие worktree этого репозитория из `git worktree list`/);
+  assert.match(rule, /\*\*Проверка до чтения\.\*\* Относительный путь разрешай от рабочей директории, затем раскрой symlink \(`realpath`\)/);
+  assert.match(rule, /Не читай файл, не копируй его в проект и не подбирай похожий артефакт вместо него\. Заверши работу `blocked: артефакт из другого проекта`/);
+  assert.match(rule, /пользователь сам переносит его в `docs\/artifacts\/` текущего проекта/);
+  assert.match(rule, /\*\*Связанные пути — тоже\.\*\* Правило действует для путей от оркестратора и для путей внутри артефакта/);
+
+  const consumers = [
+    'eda-aim', 'eda-fix-by-review', 'eda-manual-test', 'eda-orhestra', 'eda-plan', 'eda-plan-execute',
+    'eda-plan-polish', 'eda-plan-review', 'eda-plan-review-fix', 'eda-polish', 'eda-review', 'eda-send-review'
+  ];
+  for (const skillName of consumers) {
+    const raw = await fs.readFile(skillPath(skillName), 'utf8');
+    assert.match(raw, /^<!-- include: skills\/_shared\/project-artifacts\.md -->$/m, `${skillName} must include the project artifacts rule`);
+    const source = await skillSource(skillName);
+    assert.ok(source.includes(rule.trim()), `${skillName} must embed the project artifacts rule`);
+    assert.equal(source.match(/^## Артефакты только из текущего проекта$/gm).length, 1, `${skillName} must embed the rule once`);
+  }
+
+  assert.match(await fs.readFile(skillPath('eda-plan-review'), 'utf8'), /`\$PLAN_FILE` ищи только в `docs\/artifacts\/plans\/` текущего проекта: явный путь по разделу «Артефакты только из текущего проекта»/);
+  assert.match(await fs.readFile(skillPath('eda-plan-execute'), 'utf8'), /Путь — используй как есть, если он из текущего проекта по разделу «Артефакты только из текущего проекта»/);
 });
 
 test('executors claim done only with evidence from the current run', async () => {

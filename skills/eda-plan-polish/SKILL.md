@@ -15,6 +15,8 @@ description: 'Доводит план циклом ревью и исправл�
 
 Если план выбирается однозначно, продолжай без вопроса. При нескольких равных вариантах — `AskUserQuestion`.
 
+<!-- include: skills/_shared/project-artifacts.md -->
+
 <!-- include: skills/_shared/text-questions.md -->
 
 ## Настройки

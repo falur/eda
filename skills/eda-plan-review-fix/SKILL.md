@@ -13,6 +13,8 @@ description: 'Закрывает проваленные пункты чек-ли
 
 В неинтерактивном запуске не читай stdin: верни `blocked: нужен ответ пользователя` до любых правок.
 
+<!-- include: skills/_shared/project-artifacts.md -->
+
 <!-- include: skills/_shared/text-questions.md -->
 
 ## Правила
