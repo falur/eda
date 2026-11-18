@@ -2224,6 +2224,25 @@ test('executors claim done only with evidence from the current run', async () =>
   assert.match(execute, /получает раздел «Доказательство готовности» целиком/);
 });
 
+test('executors run only checks that cover the changes', async () => {
+  const rule = await fs.readFile(path.join(SKILLS_SRC, '_shared/relevant-checks.md'), 'utf8');
+  assert.match(rule, /^## Проверки по изменениям$/m);
+  assert.match(rule, /скрипты деплоя, конфиги CI, разметка: тесты и линтеры проекта не запускай/);
+  assert.match(rule, /Незапущенная проверка — не пройденная/);
+
+  for (const skillName of ['eda-plan-execute', 'eda-fix', 'eda-fix-by-review', 'eda-just-do-it']) {
+    assert.ok((await skillSource(skillName)).includes(rule.trim()), `${skillName} must embed the relevant checks rule`);
+  }
+
+  const fix = await fs.readFile(skillPath('eda-fix'), 'utf8');
+  const fixByReview = await fs.readFile(skillPath('eda-fix-by-review'), 'utf8');
+  const execute = await fs.readFile(skillPath('eda-plan-execute'), 'utf8');
+  assert.match(fix, /Финальная проверка — по изменениям/);
+  assert.doesNotMatch(fixByReview, /полный прогон|полный набор|полный сьют/);
+  assert.match(fixByReview, /проверки, покрывающие затронутые находками области/);
+  assert.match(execute, /если ни одна обязательная проверка не смотрит на изменённые файлы и поведение/);
+});
+
 test('eda-prod-check diagnoses a running environment read-only from symptom to layers', async () => {
   const content = await fs.readFile(skillPath('eda-prod-check'), 'utf8');
 
