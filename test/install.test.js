@@ -1514,6 +1514,29 @@ test('eda-just-do-it executes the inline task with selective context and a manda
   assert.match(content, /Не коммить, не пушь, не создавай PR, не публикуй и не деплой без прямого указания/);
 });
 
+test('eda-docker keeps ready-made images, ~/.ports ports and separated dev and prod', async () => {
+  const content = await fs.readFile(skillPath('eda-docker'), 'utf8');
+
+  assert.match(content, /Текст рядом с вызовом скилла в текущем сообщении пользователя — главный вход/);
+  assert.match(content, /спроси через `AskUserQuestion` и остановись до ответа/);
+  assert.match(content, /Готовое не собирай/);
+  assert.match(content, /пакетным менеджером образа/);
+  assert.match(content, /компиляции библиотек и расширений из исходников/);
+  assert.match(content, /Порты — только свободные/);
+  assert.match(content, /lsof -nP -iTCP:<порт> -sTCP:LISTEN/);
+  assert.match(content, /ближайший свободный порт в линейке сервиса/);
+  assert.match(content, /Выданные и освободившиеся порты сразу записывай в `~\/\.ports`/);
+  assert.match(content, /`docker\/dev` и `docker\/prod` — независимые compose-проекты/);
+  assert.match(content, /прод не публикует базу, кеш и очереди/);
+  assert.match(content, /docker\/\n\s+dev\/\n\s+compose\.yaml/);
+  assert.match(content, /`~\/\.ports` — общий реестр host-портов docker-проектов/);
+  assert.match(content, /секция на каждый каталог с compose/);
+  assert.match(content, /приложение и тесты — локально на хосте/);
+  assert.match(content, /docs\/artifacts\/docker\//);
+  assert.match(content, /`done`, `partial`, `blocked` или `failed`/);
+  assert.match(content, /Собирать что-либо из исходников/);
+});
+
 test('all packaged agents use the supported metadata schema', async () => {
   const expectedKeys = ['access', 'description', 'models', 'name', 'reasoning', 'schemaVersion'];
 
@@ -2161,7 +2184,7 @@ test('executors claim done only with evidence from the current run', async () =>
   assert.match(rule, /\*\*Не перебирай исправления\.\*\* Если три попытки/);
   assert.match(rule, /Если скил задаёт свой лимит повторов или порядок продолжения, действует он/);
 
-  for (const skillName of ['eda-plan-execute', 'eda-fix', 'eda-fix-by-review', 'eda-just-do-it', 'eda-polish']) {
+  for (const skillName of ['eda-plan-execute', 'eda-fix', 'eda-fix-by-review', 'eda-just-do-it', 'eda-polish', 'eda-docker']) {
     assert.ok((await skillSource(skillName)).includes(rule.trim()), `${skillName} must embed the done rule`);
   }
   for (const agentName of ['eda-aim-executor', 'eda-aim-verifier']) {
